@@ -1,6 +1,10 @@
 """
 企业 AI 智能助手 —— FastAPI 入口
 """
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 from utils.exception_handlers import (
     http_exception_handler,
     integrity_error_handler,
@@ -29,18 +33,26 @@ from models.system_log import SystemLog
 from api.chat import router as chat_router
 from api.chat_stream import router as chat_stream_router
 from router.conversations import router as conv_router
+from router.knowledge import router as knowledge_router
+from router.logs import router as logs_router
+
+from router.tools import router as tools_router
+from router.dashboard import router as dashboard_router
+from tools.tool_manager import register_default_tools
 
 # ========== 应用生命周期 ==========
 @asynccontextmanager
 async def lifespan(app:FastAPI):
     """
-    应用启动时：自动创建所有数据库表
+    应用启动时：自动创建所有数据库表 & 注册工具
     应用关闭时：（预留清理逻辑）
     """
     # 启动时执行
     print("正在创建数据库表...")
     Base.metadata.create_all(bind=engine)
     print("数据库表创建完成")
+    register_default_tools()
+    print("默认工具注册完成")
     yield
     # 关闭时执行
 
@@ -55,7 +67,7 @@ app=FastAPI(
 # CORS —— 允许前端跨域
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -98,3 +110,12 @@ def db_test(db=Depends(get_db)):
 app.include_router(chat_router)
 app.include_router(chat_stream_router)
 app.include_router(conv_router)
+app.include_router(knowledge_router)
+app.include_router(logs_router)
+
+app.include_router(tools_router)
+app.include_router(dashboard_router)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8004, reload=True)

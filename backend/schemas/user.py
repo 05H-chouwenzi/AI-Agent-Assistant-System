@@ -31,3 +31,14 @@ class LoginResponse(BaseModel):
     user_id:int
     username:str
     token:str
+
+
+class ProfileUpdateRequest(BaseModel):
+    """修改个人资料"""
+    email: str | None = None
+
+
+class PasswordChangeRequest(BaseModel):
+    """修改密码"""
+    old_password: str
+    new_password: str

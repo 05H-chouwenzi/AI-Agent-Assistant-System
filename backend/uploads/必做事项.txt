@@ -1,0 +1,4 @@
+taskkill /F /IM claude.exe
+清除除了当前claude的其他claude进程
+
+要经常删除其他会话历史

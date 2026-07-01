@@ -3,8 +3,9 @@
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from typing import Optional
+from datetime import datetime
 
 from database.session import get_db
 from models.conversation import Conversation
@@ -24,10 +25,14 @@ class ConversationResponse(BaseModel):
     id: int
     title: str
     status: str
-    created_at: Optional[str] = None
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, v):
+        return v.strftime("%Y-%m-%d %H:%M:%S") if v else None
 
 
 # ============ 创建会话 ============

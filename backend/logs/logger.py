@@ -2,9 +2,11 @@
 日志服务 —— 记录 Agent 全链路日志到 MySQL
 """
 import json
+import logging
 from sqlalchemy.orm import Session
 from models.system_log import SystemLog
 
+logger = logging.getLogger("agent")
 
 def write_log(
     db: Session,

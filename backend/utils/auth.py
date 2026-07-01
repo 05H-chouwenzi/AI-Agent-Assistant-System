@@ -36,9 +36,12 @@ def get_current_user(
         payload=jwt.decode(
             credentials.credentials,SECRET_KEY,algorithms=[ALGORITHM]
         )
-        user_id:int=payload.get("sub")
-        if user_id is None:
+        raw = payload.get("sub")
+        if isinstance(raw, str) and raw.isdigit():
+            raw = int(raw)
+        if raw is None:
             raise HTTPException(status_code=401,detail="无效的token")
+        user_id = int(raw)
     except JWTError:
         raise HTTPException(status_code=401,detail="用户不存在")
     user=db.query(User).filter(User.id==user_id).first()

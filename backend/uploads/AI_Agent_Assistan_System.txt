@@ -1,0 +1,630 @@
+🎯 Enterprise AI Assistant MVP
+
+（企业AI智能助手）
+
+一、系统本质
+
+这是一个：
+
+基于 Agent + RAG + Workflow 的企业智能助手系统
+
+核心能力：
+
+理解用户问题
+检索企业知识库
+调用外部工具
+自动执行工作流
+返回最终答案
+
+整体流程：
+
+User
+  ↓
+FastAPI
+  ↓
+Agent Runtime
+  ↓
+LangGraph Workflow
+  ↓
+RAG / Tools
+  ↓
+LLM
+  ↓
+Response
+二、整体架构
+┌────────────────────┐
+│      React UI      │
+├────────────────────┤
+│   Nginx Reverse    │
+├────────────────────┤
+│      FastAPI       │
+├────────────────────┤
+│  LangGraph Agent   │
+├────────────────────┤
+│   RAG + Tools      │
+├────────────────────┤
+│      MySQL         │
+└────────────────────┘
+
+共六层：
+
+1. React
+
+前端界面
+
+2. Nginx
+
+反向代理
+
+3. FastAPI
+
+接口服务
+
+4. LangGraph Workflow
+
+Agent执行引擎
+
+5. RAG + Tool
+
+知识库与工具系统
+
+6. MySQL
+
+业务数据存储
+
+三、前端层（React）
+
+作用：
+
+用户聊天入口
+
+类似：
+
+ChatGPT
+豆包
+Kimi
+
+技术栈：
+
+React
+Vite
+Axios
+React Router
+
+页面：
+
+登录页
+
+聊天页
+
+知识库页
+
+会话页
+
+日志页
+
+目录：
+
+frontend
+
+├── src
+│
+├── pages
+│
+├── components
+│
+├── api
+│
+├── hooks
+│
+├── router
+│
+└── App.jsx
+四、Nginx层
+
+作用：
+
+统一入口
+
+反向代理
+
+静态资源托管
+
+生产环境部署
+
+流程：
+
+浏览器
+
+↓
+
+Nginx
+
+├── React静态页面
+└── FastAPI接口
+
+        ↓
+
+     FastAPI
+
+典型配置：
+
+/api
+    ↓
+FastAPI
+
+/
+
+    ↓
+React
+
+面试官很喜欢看到：
+
+React
++
+Nginx
++
+FastAPI
+
+因为是真实项目部署方案。
+
+五、FastAPI接口层
+
+职责：
+
+接收请求
+
+鉴权
+
+调用Agent
+
+返回结果
+
+结构：
+
+api
+
+↓
+
+service
+
+↓
+
+agent
+
+↓
+
+rag/tool
+
+模块：
+
+api/
+schemas/
+services/
+models/
+
+技术：
+
+FastAPI
+SQLAlchemy
+Pydantic
+JWT
+六、LangGraph Workflow层（核心）
+
+这是项目最大的亮点。
+
+相比传统Agent：
+
+用户
+ ↓
+Agent
+ ↓
+结果
+
+LangGraph：
+
+用户
+ ↓
+Workflow
+ ↓
+多个节点
+ ↓
+结果
+为什么选LangGraph
+
+现在企业Agent几乎都在往：
+
+Workflow Agent
+
+方向发展。
+
+比单Agent更符合企业场景。
+
+七、Agent Runtime
+
+结构：
+
+agent
+
+├── planner
+├── workflow
+├── nodes
+├── state
+└── executor
+八、LangGraph工作流
+
+核心流程：
+
+START
+
+ ↓
+
+Planner
+
+ ↓
+
+判断任务类型
+
+ ├── RAG
+ ├── Tool
+ └── Direct LLM
+
+ ↓
+
+执行
+
+ ↓
+
+Response Generator
+
+ ↓
+
+END
+Node 1
+
+Planner Node
+
+负责：
+
+理解问题
+
+分类任务
+
+决定走哪条路线
+
+例如：
+
+公司请假制度
+
+↓
+
+RAG
+
+例如：
+
+上海天气
+
+↓
+
+Weather Tool
+Node 2
+
+RAG Node
+
+负责：
+
+知识检索
+Node 3
+
+Tool Node
+
+负责：
+
+工具调用
+Node 4
+
+LLM Node
+
+负责：
+
+生成回答
+Node 5
+
+Response Node
+
+负责：
+
+整合结果
+九、RAG知识库
+
+职责：
+
+让企业文档变成：
+
+AI可搜索知识
+
+支持：
+
+PDF
+
+Word
+
+TXT
+
+Markdown
+
+流程：
+
+上传文档
+
+↓
+
+解析
+
+↓
+
+切块
+
+↓
+
+Embedding
+
+↓
+
+向量存储
+
+↓
+
+召回
+
+↓
+
+LLM生成
+
+技术栈
+
+文档解析：
+
+PyMuPDF
+Unstructured
+
+Embedding：
+
+bge-m3
+
+向量存储：
+
+FAISS
+
+MVP先别上：
+
+Milvus
+Weaviate
+
+太重。
+
+目录：
+
+rag
+
+├── loader
+├── splitter
+├── embedding
+├── vector_store
+├── retriever
+十、Tool工具系统
+
+MVP保留三个工具。
+
+Tool 1
+
+Weather Tool
+
+查询天气
+Tool 2
+
+HTTP Tool
+
+调用第三方API
+Tool 3
+
+Database Tool
+
+查询MySQL
+
+流程：
+
+LangGraph
+
+↓
+
+Tool Router
+
+↓
+
+Tool
+
+↓
+
+返回结果
+
+目录：
+
+tools
+
+├── weather_tool
+├── http_tool
+├── mysql_tool
+十一、日志系统
+
+必须有。
+
+记录：
+
+用户问题
+
+Agent决策
+
+Workflow路径
+
+工具调用
+
+最终回答
+
+耗时
+
+日志流：
+
+Question
+
+↓
+
+Planner
+
+↓
+
+Workflow
+
+↓
+
+Tool
+
+↓
+
+Response
+
+↓
+
+Save Log
+十二、MySQL数据库
+
+统一使用：
+
+MySQL
+
+表设计：
+
+users
+
+chat_sessions
+
+chat_messages
+
+knowledge_files
+
+knowledge_chunks
+
+agent_logs
+十三、技术栈总览
+前端
+React
+Vite
+Axios
+React Router
+Web服务器
+Nginx
+后端
+FastAPI
+SQLAlchemy
+Pydantic
+JWT
+Agent
+LangGraph
+LangChain
+LLM
+DeepSeek API
+
+OpenAI API
+RAG
+LangChain
+
+FAISS
+
+BGE-M3
+数据库
+MySQL
+后期扩展
+Redis
+
+Celery
+
+Docker
+
+Kubernetes
+十四、最终项目目录（推荐版）
+enterprise-ai-assistant/
+
+├── frontend/
+│
+├── backend/
+│
+│   ├── api/
+│   ├── schemas/
+│   ├── services/
+│   ├── models/
+│
+│   ├── agent/
+│   │   ├── planner/
+│   │   ├── workflow/
+│   │   ├── nodes/
+│   │   ├── state/
+│   │   └── executor/
+│
+│   ├── rag/
+│   │   ├── loader/
+│   │   ├── splitter/
+│   │   ├── embedding/
+│   │   ├── retriever/
+│   │   └── vector_store/
+│
+│   ├── tools/
+│   │   ├── weather_tool/
+│   │   ├── http_tool/
+│   │   └── mysql_tool/
+│
+│   ├── database/
+│   ├── logs/
+│
+│   └── main.py
+│
+├── nginx/
+│   └── nginx.conf
+│
+├── docs/
+│
+├── docker-compose.yml
+│
+└── README.md
+
+
+最后用腾讯云部署到服务器网站
+
+代码风格参照这个:
+后端（FastAPI）
+分层架构，六层职责清晰：
+routers/ — 路由层，只负责参数提取和调用 crud，不写 SQL
+schemas/ — Pydantic v2 模型，统一用 ConfigDict(from_attributes=True, populate_by_name=True) + Field(alias=...) 做字段映射（Python snake_case ↔ 前端 camelCase）
+models/ — SQLAlchemy 2.0 声明式模型，Mapped + mapped_column 风格，每个模型有 __table_args__ 索引，comment 注释完整
+crud/ — 纯异步数据库操作层，只接受 AsyncSession，返回 Python 对象
+utils/ — 工具模块，包含 auth.py（token 鉴权）、security.py（bcrypt 密码）、response.py（统一响应）、exception.py / exception_handlers.py（全局异常注册）
+config/ — 数据库与 Redis 连接配置
+cache/ — Redis 缓存封装，序列化/反序列化
+风格特征：
+异步贯穿始终 — async / await、AsyncSession、aiomysql、redis.asyncio，每个 crud 函数都是 async def
+统一响应格式 — 所有接口返回 { "code": 200, "message": "...", "data": ... }，通过 success_response() 工具函数构建
+鉴权方式 — UUID token 存 user_token 表，Authorization 请求头传入，用 get_current_user 依赖注入
+异常处理 — 全局注册了 HTTPException、IntegrityError、SQLAlchemyError、Exception 四个级别的处理器，开发模式下返回详细错误追踪
+编码风格 — 中文字段备注（SQL 注释、API 描述），部分文件有大量尾部空行，代码间距和命名一致性还有一些磨合空间（remover_all_favorites typo、update_user 中 update_user=await get_user_by_username 变量名覆盖等），整体风格接近黑马/传智教学项目的写法，功能性完整，工整度在演进中
+前端（Vue 3 + Vite）
+UI 框架：Vant 4（移动端组件库），面向手机 H5
+状态管理：Pinia + pinia-plugin-persistedstate（持久化）
+路由：vue-router
+HTTP 请求：axios
+构建工具：Vite 7
+其他：marked + dompurify（Markdown 渲染/安全过滤）、vue-i18n（国际化）
+项目风格一句话
+一个典型的黑马教学风格全栈项目：FastAPI 异步分层后端 + Vue 3 移动端 H5 前端，功能覆盖新闻列表/分类/详情、用户注册登录、收藏、浏览历史，代码量适中、结构规整，注释偏中文教学导向。
+这个文件的存储路径是: C:\Users\你雄哥\Desktop\AI_Agent_Assistan_System.txt
+
+请你根据C:\Users\你雄哥\Desktop\AI_Agent_Assistan_System.txt这个文件对我目前的项目进度进行指导,
+给我代码让我照着敲,不要修改我的代码,不要一次性给一大堆代码

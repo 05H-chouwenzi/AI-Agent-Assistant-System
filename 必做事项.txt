@@ -1,0 +1,11 @@
+taskkill /F /IM claude.exe
+清除除了当前claude的其他claude进程
+
+要经常删除其他会话历史
+
+codex 的上下文窗口太大了
+
+codex:
+sk-81bbd981a1c448498844e09065252279
+claude:
+sk-0d003b7b81a0477f9ebffd86d04ed3c9

@@ -4,9 +4,9 @@ import LoginPage from "../pages/LoginPage";
 import DashboardPage from "../pages/DashboardPage";
 import KnowledgePage from "../pages/KnowledgePage";
 import ToolCenterPage from "../pages/ToolCenterPage";
-import WorkflowPage from "../pages/WorkflowPage";
 import LogsPage from "../pages/LogsPage";
 import SettingsPage from "../pages/SettingsPage";
+import ProfilePage from "../pages/ProfilePage";
 
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem("token");
@@ -21,9 +21,9 @@ const router = createBrowserRouter([
   { path: "/dashboard", element: <ProtectedRoute><DashboardPage /></ProtectedRoute> },
   { path: "/knowledge", element: <ProtectedRoute><KnowledgePage /></ProtectedRoute> },
   { path: "/tools", element: <ProtectedRoute><ToolCenterPage /></ProtectedRoute> },
-  { path: "/workflow", element: <ProtectedRoute><WorkflowPage /></ProtectedRoute> },
   { path: "/logs", element: <ProtectedRoute><LogsPage /></ProtectedRoute> },
   { path: "/settings", element: <ProtectedRoute><SettingsPage /></ProtectedRoute> },
+  { path: "/profile", element: <ProtectedRoute><ProfilePage /></ProtectedRoute> },
 ]);
 
 export default router;

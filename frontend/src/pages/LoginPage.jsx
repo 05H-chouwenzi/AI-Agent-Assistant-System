@@ -31,8 +31,9 @@ export default function LoginPage() {
         window.location.href = "/";
       }
     } catch (err) {
-      const d = err.response?.data?.detail;
-      const detail = Array.isArray(d) ? d.map(e => e.msg).join("；") : (d || "操作失败，请稍后再试");
+      const data = err.response?.data;
+      const msg = data?.detail || data?.message || err.message || "操作失败，请稍后再试";
+      const detail = Array.isArray(msg) ? msg.map(e => e.msg).join("；") : msg;
       setError(detail);
     } finally {
       setLoading(false);

@@ -31,8 +31,10 @@ async def sqlalchemy_error_handler(request:Request,exc:SQLAlchemyError):
     )
 
 async def general_exception_handler(request:Request,exc:Exception):
-   """未捕获的异常""" 
+   """未捕获的异常"""
+   import traceback
+   traceback.print_exc()
    return JSONResponse(
        status_code=500,
-       content=error_response(message="服务器内部错误",code=500),
+       content=error_response(message=f"服务器内部错误: {str(exc)}",code=500),
    )

@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://localhost:8000",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8004",
   timeout: 30000,
 });
 
@@ -13,6 +13,20 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// 401 自动跳转登录
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401 && !err.config.url.includes("/login")) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("username");
+      localStorage.removeItem("user_id");
+      window.location.href = "/login";
+    }
+    return Promise.reject(err);
+  }
+);
 
 /** 登录 */
 export async function login(username, password) {
@@ -52,5 +66,23 @@ export async function deleteConversation(id) {
 /** 获取会话消息列表 */
 export async function getConversationMessages(convId) {
   const res = await api.get(`/api/conversations/${convId}/messages`);
+  return res.data;
+}
+
+/** 获取当前用户信息 */
+export async function getProfile() {
+  const res = await api.get("/api/users/profile");
+  return res.data;
+}
+
+/** 修改个人资料 */
+export async function updateProfile(data) {
+  const res = await api.put("/api/users/profile", data);
+  return res.data;
+}
+
+/** 修改密码 */
+export async function changePassword(data) {
+  const res = await api.put("/api/users/password", data);
   return res.data;
 }
