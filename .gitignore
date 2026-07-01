@@ -25,3 +25,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Upload test files
+backend/uploads/
