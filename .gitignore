@@ -28,3 +28,10 @@ Thumbs.db
 
 # Upload test files
 backend/uploads/
+
+# Vector index data (auto-generated)
+backend/rag/data/vector_index_shared/*.pkl
+backend/rag/data/vector_index_shared/*.faiss
+
+# Sensitive data
+用户账号密码.xlsx

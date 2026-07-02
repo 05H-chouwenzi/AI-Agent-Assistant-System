@@ -63,6 +63,53 @@ class HttpResponse(BaseModel):
     execution_time_ms: float = 0
 
 
+class RAGSearchRequest(BaseModel):
+    """知识库检索请求"""
+    query: str
+    top_k: Optional[int] = 5
+
+
+class RAGSearchResponse(BaseModel):
+    """知识库检索响应"""
+    success: bool
+    data: dict = {}
+    error: str = ""
+    execution_time_ms: float = 0
+
+
+@router.post("/rag", response_model=RAGSearchResponse)
+def search_knowledge(req: RAGSearchRequest):
+    """
+    搜索企业内部知识库
+
+    根据查询词从向量库中检索最相关的文档片段，返回相关内容及来源。
+    """
+    manager = get_tool_manager()
+    tool = manager.get("rag_search")
+
+    if tool is None:
+        raise HTTPException(status_code=500, detail="知识库检索工具未注册")
+
+    start = time.time()
+    result: ToolResult = tool.execute(query=req.query.strip(), top_k=req.top_k or 5)
+    elapsed = (time.time() - start) * 1000
+
+    if result.success:
+        logger.info(f"知识库检索成功: '{req.query[:30]}' ({elapsed:.0f}ms)")
+        return RAGSearchResponse(
+            success=True,
+            data=result.data if isinstance(result.data, dict) else {"result": result.data},
+            execution_time_ms=round(elapsed, 2),
+        )
+    else:
+        logger.warning(f"知识库检索失败: {result.error}")
+        return RAGSearchResponse(
+            success=False,
+            error=result.error or "检索失败",
+            execution_time_ms=round(elapsed, 2),
+        )
+
+
 @router.post("/weather", response_model=WeatherResponse)
 def query_weather(req: WeatherRequest):
     """

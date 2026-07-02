@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import AppSidebar from "../components/AppSidebar";
+import FileIcon from "../components/FileIcon";
 import { queryWeather, executeDatabaseQuery, sendHttpRequest } from "../api/tools";
+import { listDocs } from "../api/knowledge";
 
 const TOOLS = [
   { name: "RAG", label: "知识库检索", desc: "搜索企业内部知识库与文档", icon: "📚", tool: "rag_search" },
@@ -28,6 +30,13 @@ export default function ToolCenterPage() {
     }
   }, [searchParams]);
 
+  // 进入 RAG 工具时获取文档列表
+  useEffect(() => {
+    if (activeTool === "rag_search") {
+      fetchDocs();
+    }
+  }, [activeTool]);
+
   // 数据库查询状态
   const [dbQuery, setDbQuery] = useState("");
   const [dbLimit, setDbLimit] = useState(50);
@@ -43,6 +52,11 @@ export default function ToolCenterPage() {
   const [httpResult, setHttpResult] = useState(null);
   const [httpLoading, setHttpLoading] = useState(false);
   const [httpError, setHttpError] = useState("");
+
+  // RAG 知识库文档列表状态
+  const [docs, setDocs] = useState([]);
+  const [docsTotal, setDocsTotal] = useState(0);
+  const [docsLoading, setDocsLoading] = useState(false);
 
   function handleToolClick(tool) {
     setActiveTool(tool);
@@ -156,6 +170,19 @@ export default function ToolCenterPage() {
       e.preventDefault();
       handleHttpRequest();
     }
+  }
+
+  // ========== RAG 方法 ==========
+  async function fetchDocs() {
+    setDocsLoading(true);
+    try {
+      const data = await listDocs({ page: 1, page_size: 50 });
+      setDocs(data.items || []);
+      setDocsTotal(data.total || 0);
+    } catch {
+      setDocs([]);
+    }
+    setDocsLoading(false);
   }
 
   function renderWeatherPanel() {
@@ -445,6 +472,41 @@ export default function ToolCenterPage() {
     );
   }
 
+  function renderRagPanel() {
+    return (
+      <div className="tool-panel">
+        <div className="tool-panel-header">
+          <span className="tool-panel-title">📚 知识库检索</span>
+          <span style={{ fontSize: "13px", color: "var(--text-muted)", marginLeft: "auto" }}>
+            共 {docsTotal} 篇文档
+          </span>
+        </div>
+
+        <div style={{ padding: "16px 20px" }}>
+          {docsLoading ? (
+            <p className="text-muted" style={{ textAlign: "center", padding: "20px" }}>加载中...</p>
+          ) : docs.length === 0 ? (
+            <p className="text-muted" style={{ textAlign: "center", padding: "20px" }}>暂无文档，请前往「公司知识库」上传</p>
+          ) : (
+            <div className="doc-list">
+              {docs.map((d) => (
+                <div key={d.id} className="doc-item">
+                  <span className="doc-icon">
+                    <FileIcon type={d.file_type} />
+                  </span>
+                  <span className="doc-title">{d.title}</span>
+                  <span className="doc-status completed">已完成</span>
+                  <span className="doc-uploader" title="上传者">{d.uploader}</span>
+                  <span className="doc-date">{d.created_at?.slice(0, 10)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   function renderComingSoon() {
     return (
       <div className="tool-panel">
@@ -485,7 +547,8 @@ export default function ToolCenterPage() {
           {activeTool === "weather" && renderWeatherPanel()}
           {activeTool === "mysql" && renderDatabasePanel()}
           {activeTool === "http" && renderHttpPanel()}
-          {activeTool && activeTool !== "weather" && activeTool !== "mysql" && activeTool !== "http" && renderComingSoon()}
+          {activeTool === "rag_search" && renderRagPanel()}
+          {activeTool && activeTool !== "weather" && activeTool !== "mysql" && activeTool !== "http" && activeTool !== "rag_search" && renderComingSoon()}
           {!activeTool && (
             <div className="tool-welcome">
               <div className="tool-welcome-icon">👆</div>

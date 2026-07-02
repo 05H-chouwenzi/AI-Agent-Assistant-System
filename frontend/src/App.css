@@ -409,6 +409,16 @@ body {
 .login-card .input-group { margin-bottom: 14px; text-align: left; position: relative; }
 .login-card .input-group input { width: 100%; padding: 10px 40px 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; outline: none; transition: border-color .15s; }
 .login-card .input-group input:focus { border-color: #000; }
+/* 隐藏浏览器自带的密码眼睛图标（与自定义图标重复） */
+.login-card .input-group input[type="password"]::-ms-reveal,
+.login-card .input-group input[type="password"]::-ms-clear {
+  display: none;
+}
+.login-card .input-group input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+}
 .login-card .input-group .pw-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 4px; display: flex; }
 .login-card .input-group .pw-toggle:hover { color: var(--text); }
 .login-btn { width: 100%; padding: 10px; background: #171717; color: #fff; border: none; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; cursor: pointer; margin-top: 6px; }
