@@ -1,0 +1,75 @@
+# =============================================================================
+# docker-compose.yml — AI Agent Assistant System
+# 启动: docker-compose up -d --build
+# 停止: docker-compose down
+# =============================================================================
+version: "3.8"
+
+services:
+  # ---- 数据库 ----
+  db:
+    image: mysql:8.0
+    container_name: ai-assistant-db
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # MYSQL_* 变量从 .env 读取
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-assistant-net
+
+  # ---- 后端 ----
+  backend:
+    build:
+      context: ./backend
+    container_name: ai-assistant-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # 覆盖 .env 中的 DATABASE_URL，把 localhost 换成容器名 db
+      DATABASE_URL: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD}@db:3306/${MYSQL_DATABASE}
+    volumes:
+      # 持久化: 用户上传文件
+      - ./backend/uploads:/app/uploads
+      # 持久化: RAG 向量索引数据
+      - ./backend/rag/data:/app/rag/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ai-assistant-net
+
+  # ---- 前端 + Nginx ----
+  frontend:
+    build:
+      context: .
+      dockerfile: ./frontend/Dockerfile
+    container_name: ai-assistant-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - ai-assistant-net
+
+volumes:
+  mysql_data:
+    name: ai-assistant-mysql-data
+
+networks:
+  ai-assistant-net:
+    name: ai-assistant-net
+    driver: bridge

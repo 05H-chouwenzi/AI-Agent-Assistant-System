@@ -11,7 +11,7 @@ from database.session import get_db
 from models.user import User
 
 # ========== 配置（后续移到配置文件） ==========
-SECRET_KEY = "your-secret-key-change-in-production"
+SECRET_KEY = "fO8Zo5CjNWwhvD9Sa0U4n7tubpGHA3c1VPdBLXqsT6iMxzYQr2ymIJFeKRgElk"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7天
 

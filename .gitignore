@@ -26,6 +26,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Docker runtime
+mysql_data/
+
 # Upload test files
 backend/uploads/
 
