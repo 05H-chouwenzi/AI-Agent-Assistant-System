@@ -16,7 +16,6 @@ export default function ToolCenterPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTool, setActiveTool] = useState(null);
   const [city, setCity] = useState("");
-  const [days, setDays] = useState(1);
   const [weatherResult, setWeatherResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -80,7 +79,7 @@ export default function ToolCenterPage() {
     setError("");
     setWeatherResult(null);
     try {
-      const res = await queryWeather(city.trim(), days);
+      const res = await queryWeather(city.trim(), 1);
       if (res.success) {
         setWeatherResult(res.data);
       } else {
@@ -200,11 +199,6 @@ export default function ToolCenterPage() {
               onChange={(e) => setCity(e.target.value)}
               onKeyDown={handleKeyDown}
             />
-            <select className="weather-days-select" value={days} onChange={(e) => setDays(Number(e.target.value))}>
-              <option value={1}>今天</option>
-              <option value={2}>今明两天</option>
-              <option value={3}>未来三天</option>
-            </select>
             <button className="weather-search-btn" onClick={handleWeatherSearch} disabled={loading || !city.trim()}>
               {loading ? <span className="spinner-sm" /> : "查询"}
             </button>
@@ -277,7 +271,7 @@ export default function ToolCenterPage() {
           <div className="weather-tips">
             <div className="weather-tip-item">💡 支持中文 / 英文城市名</div>
             <div className="weather-tip-item">🌍 覆盖全球主要城市</div>
-            <div className="weather-tip-item">📊 可查看未来 1-3 天预报</div>
+            <div className="weather-tip-item">🌡 实时查看今日天气</div>
           </div>
         )}
       </div>

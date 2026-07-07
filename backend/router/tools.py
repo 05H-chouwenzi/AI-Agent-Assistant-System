@@ -2,13 +2,19 @@
 工具 API 路由 —— 提供工具的直接 REST API 调用接口
 """
 import time
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Any, Optional
+from sqlalchemy.orm import Session
 
 from tools.base_tool import ToolResult
 from tools.tool_manager import get_tool_manager
 from logs.logger import logger
+from database.session import get_db
+from models.user import User
+from utils.auth import get_current_user
+from logs.operation_logger import OperationLogger, Actions
+from utils.client_ip import get_client_ip
 
 router = APIRouter(prefix="/api/tools", tags=["工具中心"])
 
@@ -78,7 +84,11 @@ class RAGSearchResponse(BaseModel):
 
 
 @router.post("/rag", response_model=RAGSearchResponse)
-def search_knowledge(req: RAGSearchRequest):
+def search_knowledge(
+    req: RAGSearchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     搜索企业内部知识库
 
@@ -96,6 +106,18 @@ def search_knowledge(req: RAGSearchRequest):
 
     if result.success:
         logger.info(f"知识库检索成功: '{req.query[:30]}' ({elapsed:.0f}ms)")
+
+        # ★ 记录操作日志
+        OperationLogger.log_rag_search(
+            db,
+            user_id=current_user.id,
+            query=req.query,
+            docs_count=len(result.data.get("results", [])) if isinstance(result.data, dict) else 1,
+            success=True,
+            source="api",
+            elapsed_ms=int(elapsed),
+        )
+
         return RAGSearchResponse(
             success=True,
             data=result.data if isinstance(result.data, dict) else {"result": result.data},
@@ -103,6 +125,17 @@ def search_knowledge(req: RAGSearchRequest):
         )
     else:
         logger.warning(f"知识库检索失败: {result.error}")
+
+        OperationLogger.log_rag_search(
+            db,
+            user_id=current_user.id,
+            query=req.query,
+            docs_count=0,
+            success=False,
+            source="api",
+            elapsed_ms=int(elapsed),
+        )
+
         return RAGSearchResponse(
             success=False,
             error=result.error or "检索失败",
@@ -111,7 +144,11 @@ def search_knowledge(req: RAGSearchRequest):
 
 
 @router.post("/weather", response_model=WeatherResponse)
-def query_weather(req: WeatherRequest):
+def query_weather(
+    req: WeatherRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     查询指定城市的实时天气信息
 
@@ -129,6 +166,19 @@ def query_weather(req: WeatherRequest):
 
     if result.success:
         logger.info(f"天气查询成功: {req.city} ({elapsed:.0f}ms)")
+
+        # ★ 记录操作日志
+        OperationLogger.log_tool_call(
+            db,
+            user_id=current_user.id,
+            action=Actions.TOOL_WEATHER,
+            tool_name="weather",
+            params={"city": req.city, "days": req.days},
+            result_summary=f"{req.city} 天气查询成功",
+            success=True,
+            elapsed_ms=int(elapsed),
+        )
+
         return WeatherResponse(
             success=True,
             data=result.data if isinstance(result.data, dict) else {"result": result.data},
@@ -136,6 +186,18 @@ def query_weather(req: WeatherRequest):
         )
     else:
         logger.warning(f"天气查询失败: {req.city} - {result.error}")
+
+        OperationLogger.log_tool_call(
+            db,
+            user_id=current_user.id,
+            action=Actions.TOOL_WEATHER,
+            tool_name="weather",
+            params={"city": req.city, "days": req.days},
+            result_summary=f"失败: {result.error}",
+            success=False,
+            elapsed_ms=int(elapsed),
+        )
+
         return WeatherResponse(
             success=False,
             error=result.error or "查询失败",
@@ -144,7 +206,11 @@ def query_weather(req: WeatherRequest):
 
 
 @router.post("/mysql", response_model=DatabaseQueryResponse)
-def query_database(req: DatabaseQueryRequest):
+def query_database(
+    req: DatabaseQueryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     执行 MySQL 只读查询（SELECT / SHOW / DESCRIBE / EXPLAIN）
 
@@ -178,6 +244,19 @@ def query_database(req: DatabaseQueryRequest):
                 rows = [[row.get(col, "") for col in columns] for row in raw_rows]
 
         logger.info(f"数据库查询成功: {len(rows)} 行 ({elapsed:.0f}ms)")
+
+        # ★ 记录操作日志
+        OperationLogger.log_tool_call(
+            db,
+            user_id=current_user.id,
+            action=Actions.TOOL_MYSQL,
+            tool_name="mysql",
+            params={"query": query_text[:200], "limit": req.limit},
+            result_summary=f"查询 {len(rows)} 行",
+            success=True,
+            elapsed_ms=int(elapsed),
+        )
+
         return DatabaseQueryResponse(
             success=True,
             columns=columns,
@@ -188,6 +267,18 @@ def query_database(req: DatabaseQueryRequest):
         )
     else:
         logger.warning(f"数据库查询失败: {result.error}")
+
+        OperationLogger.log_tool_call(
+            db,
+            user_id=current_user.id,
+            action=Actions.TOOL_MYSQL,
+            tool_name="mysql",
+            params={"query": req.query[:200], "limit": req.limit},
+            result_summary=f"失败: {result.error}",
+            success=False,
+            elapsed_ms=int(elapsed),
+        )
+
         return DatabaseQueryResponse(
             success=False,
             error=result.error or "查询失败",
@@ -210,7 +301,11 @@ def list_tools():
 
 
 @router.post("/http", response_model=HttpResponse)
-def send_http_request(req: HttpRequest):
+def send_http_request(
+    req: HttpRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     发送 HTTP 请求到指定 URL
 
@@ -239,6 +334,19 @@ def send_http_request(req: HttpRequest):
     if result.success:
         data = result.data if isinstance(result.data, dict) else {}
         logger.info(f"HTTP 请求成功: {method} {req.url} ({elapsed:.0f}ms) 状态码={data.get('状态码', '?')}")
+
+        # ★ 记录操作日志
+        OperationLogger.log_tool_call(
+            db,
+            user_id=current_user.id,
+            action=Actions.TOOL_HTTP,
+            tool_name="http",
+            params={"method": method, "url": req.url, "headers": req.headers},
+            result_summary=f"{method} {req.url} -> {data.get('状态码', '?')}",
+            success=True,
+            elapsed_ms=int(elapsed),
+        )
+
         return HttpResponse(
             success=True,
             status_code=data.get("状态码", 0),
@@ -249,6 +357,18 @@ def send_http_request(req: HttpRequest):
         )
     else:
         logger.warning(f"HTTP 请求失败: {method} {req.url} - {result.error}")
+
+        OperationLogger.log_tool_call(
+            db,
+            user_id=current_user.id,
+            action=Actions.TOOL_HTTP,
+            tool_name="http",
+            params={"method": method, "url": req.url},
+            result_summary=f"失败: {result.error}",
+            success=False,
+            elapsed_ms=int(elapsed),
+        )
+
         return HttpResponse(
             success=False,
             error=result.error or "请求失败",

@@ -51,15 +51,15 @@ export default function DashboardPage() {
       const newErrors = {};
       if (results[0].status === "rejected") {
         const err = results[0].reason;
-        newErrors.stats = err.response?.data?.detail || err.message || "获取统计数据失败";
+        newErrors.stats = err.response?.data?.detail || (err.code === "ECONNABORTED" ? "请求超时，请刷新重试" : err.message) || "获取统计数据失败";
       }
       if (results[1].status === "rejected") {
         const err = results[1].reason;
-        newErrors.trends = err.response?.data?.detail || err.message || "获取趋势数据失败";
+        newErrors.trends = err.response?.data?.detail || (err.code === "ECONNABORTED" ? "请求超时，请刷新重试" : err.message) || "获取趋势数据失败";
       }
       if (results[2].status === "rejected") {
         const err = results[2].reason;
-        newErrors.system = err.response?.data?.detail || err.message || "获取系统状态失败";
+        newErrors.system = err.response?.data?.detail || (err.code === "ECONNABORTED" ? "请求超时，请刷新重试" : err.message) || "获取系统状态失败";
       }
       setErrors(newErrors);
       setLoading(false);

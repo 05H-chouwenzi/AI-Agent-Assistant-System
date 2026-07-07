@@ -263,7 +263,6 @@ body {
 .weather-input-group { display: flex; gap: 10px; }
 .weather-input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; outline: none; transition: border-color .15s; }
 .weather-input:focus { border-color: #000; }
-.weather-days-select { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; outline: none; background: #fff; cursor: pointer; }
 .weather-search-btn { padding: 10px 24px; border: none; border-radius: var(--radius-sm); background: var(--sidebar-bg); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 6px; }
 .weather-search-btn:hover:not(:disabled) { background: #333; }
 .weather-search-btn:disabled { opacity: .5; cursor: not-allowed; }

@@ -5,6 +5,7 @@ import json
 import time
 import re
 from tools.base_tool import BaseTool, ToolResult, _json_safe
+from config.settings import DATABASE_URL
 
 
 class MySQLTool(BaseTool):
@@ -21,15 +22,9 @@ class MySQLTool(BaseTool):
     def __init__(self, database_url: str | None = None):
         """
         database_url: SQLAlchemy 连接字符串，如 'mysql+pymysql://user:pass@host:port/db'
-        如果为 None，则从 .env 文件读取 DATABASE_URL
+        如果为 None，则使用 config.settings 中的 DATABASE_URL
         """
-        if database_url is None:
-            import os
-            from pathlib import Path
-            from dotenv import load_dotenv
-            load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-            database_url = os.getenv("DATABASE_URL", "")
-        self._database_url = database_url
+        self._database_url = database_url or DATABASE_URL
 
     @property
     def name(self) -> str:

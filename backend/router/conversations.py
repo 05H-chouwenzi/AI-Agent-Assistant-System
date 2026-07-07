@@ -8,10 +8,11 @@ from typing import Optional
 from datetime import datetime
 
 from database.session import get_db
-from models.conversation import Conversation
-from models.message import Message
-from utils.auth import get_current_user
 from models.user import User
+from utils.auth import get_current_user
+from logs.operation_logger import OperationLogger, Actions
+from crud import conversation as conv_crud
+from crud import message as msg_crud
 
 router = APIRouter(prefix="/api/conversations", tags=["会话"])
 
@@ -42,10 +43,18 @@ def create_conversation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    conv = Conversation(title=req.title, user_id=current_user.id)
-    db.add(conv)
-    db.commit()
-    db.refresh(conv)
+    conv = conv_crud.create_conversation(db, req.title, current_user.id)
+
+    # ★ 记录操作日志
+    OperationLogger.log_conversation_event(
+        db,
+        action=Actions.CONVERSATION_CREATE,
+        user_id=current_user.id,
+        conv_title=conv.title,
+        conv_id=conv.id,
+        detail={"title": conv.title},
+    )
+
     return conv
 
 
@@ -55,12 +64,18 @@ def list_conversations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return (
-        db.query(Conversation)
-        .filter(Conversation.user_id == current_user.id, Conversation.status == "active")
-        .order_by(Conversation.updated_at.desc())
-        .all()
+    convs = conv_crud.get_user_active_conversations(db, current_user.id)
+
+    # ★ 记录操作日志
+    OperationLogger.log_conversation_event(
+        db,
+        action=Actions.CONVERSATION_LIST,
+        user_id=current_user.id,
+        conv_title=f"会话列表(共{len(convs)}个)",
+        detail={"count": len(convs)},
     )
+
+    return convs
 
 
 # ============ 删除会话 ============
@@ -70,16 +85,19 @@ def delete_conversation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    conv = (
-        db.query(Conversation)
-        .filter(Conversation.id == conv_id, Conversation.user_id == current_user.id)
-        .first()
-    )
+    conv = conv_crud.archive_conversation(db, conv_id, current_user.id)
     if not conv:
         raise HTTPException(status_code=404, detail="会话不存在")
 
-    conv.status = "archived"
-    db.commit()
+    # ★ 记录操作日志
+    OperationLogger.log_conversation_event(
+        db,
+        action=Actions.CONVERSATION_DELETE,
+        user_id=current_user.id,
+        conv_title=conv.title,
+        conv_id=conv_id,
+    )
+
     return {"message": "已删除"}
 
 
@@ -91,20 +109,22 @@ def get_conversation_messages(
     current_user: User = Depends(get_current_user),
 ):
     """获取某个会话的所有消息"""
-    conv = (
-        db.query(Conversation)
-        .filter(Conversation.id == conv_id, Conversation.user_id == current_user.id)
-        .first()
-    )
+    conv = conv_crud.get_conversation(db, conv_id, current_user.id)
     if not conv:
         raise HTTPException(status_code=404, detail="会话不存在")
 
-    messages = (
-        db.query(Message)
-        .filter(Message.conversation_id == conv_id)
-        .order_by(Message.created_at.asc())
-        .all()
+    messages = msg_crud.get_conversation_messages(db, conv_id)
+
+    # ★ 记录操作日志
+    OperationLogger.log_conversation_event(
+        db,
+        action=Actions.CONVERSATION_VIEW,
+        user_id=current_user.id,
+        conv_title=conv.title,
+        conv_id=conv_id,
+        detail={"message_count": len(messages)},
     )
+
     return [
         {
             "id": m.id,

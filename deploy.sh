@@ -179,17 +179,22 @@ DB_NAME=${DB_NAME:-ai_assistant}
 # ============================================================
 title "4/6  配置 JWT 密钥"
 
-AUTH_FILE="$PROJECT_DIR/backend/utils/auth.py"
-if [ -f "$AUTH_FILE" ] && grep -q 'SECRET_KEY = "your-secret-key-change-in-production"' "$AUTH_FILE" 2>/dev/null; then
-  info "检测到默认 JWT 密钥，正在生成随机密钥..."
+ENV_FILE="$PROJECT_DIR/backend/.env"
+if [ -f "$ENV_FILE" ] && grep -qE '^JWT_SECRET=(你的JWT密钥|fO8Zo5CjNWwhvD9Sa0U4n7tubpGHA3c1VPdBLXqsT6iMxzYQr2ymIJFeKRgElk)$' "$ENV_FILE" 2>/dev/null; then
+  info "检测到默认/占位 JWT 密钥，正在生成随机密钥..."
   JWT_SECRET=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 64)
-  # 跨平台 sed 替换
+  # 跨平台 sed 替换 .env 中的 JWT_SECRET
   if [[ "$(uname)" == "Darwin" ]]; then
-    sed -i '' "s/SECRET_KEY = \"your-secret-key-change-in-production\"/SECRET_KEY = \"$JWT_SECRET\"/" "$AUTH_FILE"
+    sed -i '' "s/^JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" "$ENV_FILE"
   else
-    sed -i "s/SECRET_KEY = \"your-secret-key-change-in-production\"/SECRET_KEY = \"$JWT_SECRET\"/" "$AUTH_FILE"
+    sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" "$ENV_FILE"
   fi
-  ok "JWT 密钥已更新"
+  ok "JWT 密钥已更新到 backend/.env"
+elif ! grep -q '^JWT_SECRET=' "$ENV_FILE" 2>/dev/null; then
+  info "backend/.env 缺少 JWT_SECRET，正在生成..."
+  JWT_SECRET=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 64)
+  echo "JWT_SECRET=$JWT_SECRET" >> "$ENV_FILE"
+  ok "JWT_SECRET 已追加到 backend/.env"
 else
   ok "JWT 密钥已自定义（跳过）"
 fi

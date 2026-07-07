@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { getConversations, createConversation, deleteConversation, getConversationMessages } from "../api/chat";
 
-const SSE_URL = `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}/api/chat/stream`;
+const SSE_URL = `${import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:8000")}/api/chat/stream`;
 
 function genId() {
   return Date.now() + Math.floor(Math.random() * 999999);

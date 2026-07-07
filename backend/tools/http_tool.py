@@ -5,7 +5,45 @@ import json
 import time
 import urllib.request
 import urllib.error
+from urllib.parse import urlparse
 from tools.base_tool import BaseTool, ToolResult
+
+# ---------- 安全白名单 ----------
+# 只允许请求以下域名，防止 SSRF 攻击
+ALLOWED_HOSTS = [
+    "api.github.com",
+    "api.open-meteo.com",
+    "wttr.in",
+    "jsonplaceholder.typicode.com",
+    "httpbin.org",
+]
+
+def _is_url_allowed(url: str) -> tuple[bool, str]:
+    """检查 URL 是否在白名单内，返回 (是否允许, 拒绝原因)"""
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+    except Exception:
+        return False, "URL 格式无法解析"
+
+    # 禁止内网地址
+    blocked_patterns = [
+        "localhost", "127.0.0.1", "0.0.0.0", "10.", "172.16.", "172.17.",
+        "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.",
+        "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.",
+        "172.30.", "172.31.", "192.168.", "169.254.",
+        "[::1]", "[::]", "[0:",
+    ]
+    for pattern in blocked_patterns:
+        if host.startswith(pattern) or host == pattern.strip("."):
+            return False, f"禁止访问内网地址: {host}"
+
+    # 白名单检查
+    for allowed in ALLOWED_HOSTS:
+        if host == allowed or host.endswith("." + allowed):
+            return True, ""
+
+    return False, f"域名 {host} 不在白名单中"
 
 
 class HttpTool(BaseTool):
@@ -62,6 +100,11 @@ class HttpTool(BaseTool):
 
         if method not in ("GET", "POST", "PUT", "DELETE"):
             return ToolResult(success=False, error=f"不支持的 HTTP 方法: {method}", tool_name=self.name)
+
+        # ---------- SSRF 防护：白名单 + 内网拦截 ----------
+        allowed, reason = _is_url_allowed(url)
+        if not allowed:
+            return ToolResult(success=False, error=reason, tool_name=self.name)
 
         start = time.time()
         try:

@@ -1,51 +1,43 @@
 """
 数据库会话管理
-- 读取 .env 中的 DATABASE_URL
+- 从 config.settings 导入 DATABASE_URL（单一配置源）
 - 创建 SQLAlchemy 引擎
 - 提供 get_db 依赖注入函数
 """
 
-import os
-from pathlib import Path
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker,Session
+from sqlalchemy.orm import sessionmaker, Session
 
-# 1. 加载 .env 文件（向上查找 backend 目录的 .env）
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+from config.settings import DATABASE_URL
 
-# 2. 读取数据库连接 URL
-DATABASE_URL=os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("未找到DATABASE_URL,请检查backend/.env文件")
-
-# 3. 创建引擎
-engine=create_engine(
+# 1. 创建引擎
+engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,#    pool_pre_ping=True：每次连接前先 ping，防止 MySQL 8 小时断连
-    pool_recycle=3600,#    pool_recycle=3600：每小时回收连接
+    pool_pre_ping=True,     # 每次连接前先 ping，防止 MySQL 8 小时断连
+    pool_recycle=3600,      # 每小时回收连接
     echo=False,
 )
 
-# 4. 创建会话工厂
-SessionLocal=sessionmaker(
+# 2. 创建会话工厂
+SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=engine,
 )
 
-# 5. 依赖注入函数 —— FastAPI 路由里用它获取数据库会话
+
+# 3. 依赖注入函数 —— FastAPI 路由里用它获取数据库会话
 def get_db():
     """
     FastAPI 依赖注入：每个请求获取一个独立会话，请求结束自动关闭。
-    
+
     用法：
         @app.get("/users")
         def get_users(db: Session = Depends(get_db)):
             ...
     """
-    db=SessionLocal()
+    db = SessionLocal()
     try:
-        yield db 
+        yield db
     finally:
         db.close()

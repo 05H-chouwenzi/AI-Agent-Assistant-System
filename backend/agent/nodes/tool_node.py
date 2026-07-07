@@ -14,12 +14,9 @@ Tool Node —— 外部工具调用节点（完整实现）
 """
 import json
 from agent.state.agent_state import AgentState
-from tools.tool_manager import get_tool_manager, register_default_tools
+from tools.tool_manager import get_tool_manager
 from tools.tool_router import ToolRouter
 from logs.logger import logger
-
-# 全局初始化（模块加载时执行一次）
-register_default_tools()
 
 # 全局 ToolRouter 实例
 _router = ToolRouter()

@@ -1,32 +1,7 @@
-import axios from "axios";
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000",
-  timeout: 30000,
-});
-
-// 每次请求自动带上 token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// 401 自动跳转登录
-api.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    if (err.response?.status === 401 && !err.config.url.includes("/login")) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("username");
-      localStorage.removeItem("user_id");
-      window.location.href = "/login";
-    }
-    return Promise.reject(err);
-  }
-);
+/**
+ * 聊天 & 用户 API
+ */
+import api from "./client";
 
 /** 登录 */
 export async function login(username, password) {

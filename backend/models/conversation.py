@@ -27,8 +27,8 @@ class Conversation(Base,TimestampMixin):
         String(20),default="active",comment="状态:active/archived"
     )
 
-    # 关联 Message —— 一个对话有多条消息
-    messages=relationship("Message",back_populates="conversation",lazy="selectin")
+    # 关联 Message —— 仅在需要时显式加载
+    messages = relationship("Message", back_populates="conversation")
 
     def __repr__(self):
         return f"<Conversation(id={self.id},title='{self.title}')>"

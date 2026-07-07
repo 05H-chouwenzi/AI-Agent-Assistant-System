@@ -173,16 +173,44 @@ class ToolRouter:
                         # 提取参数
                         args = {}
                         if tool_name == "weather":
-                            # 智能提取城市名：取 "天气" 前面的文本，去掉 "明天/后天" 等时间词
+                            # 智能提取城市名：用正则匹配常见提问模式
                             import re
-                            city_raw = question
-                            for sep in ["天气", "气温", "下雨", "刮风", "下雪"]:
-                                if sep in city_raw:
-                                    city_raw = city_raw.split(sep)[0].strip()
-                            # 去掉常见时间词
-                            for t in ["明天", "后天", "今天", "昨天", "大后天", "未来", "一周", "一周内"]:
-                                city_raw = city_raw.replace(t, "").strip()
-                            args["city"] = city_raw if city_raw else question
+
+                            # 模式1：查询<城市>的天气 / 查<城市>天气
+                            city = None
+                            skip_words = ["根据", "工具", "中心", "api", "接口", "什么", "怎么", "如何", "一下", "交通"]
+                            patterns = [
+                                r'(?:查询|查|看看|搜|搜索)\s*(\w{2,6}?)\s*(?:的?天气|的?气温|的?温度)',
+                                r'(\w{2,6}?)\s*(?:今天|明天|后天)?\s*(?:的?天气|的?气温|的?温度)',
+                            ]
+                            for pat in patterns:
+                                m = re.search(pat, question)
+                                if m:
+                                    candidate = m.group(1)
+                                    # 过滤掉明显不是城市名的关键词
+                                    if not any(w in candidate for w in skip_words):
+                                        city = candidate
+                                        break
+                                    # 如果包含非城市词（如"北京交通"中的"交通"），尝试剔除
+                                    for w in skip_words:
+                                        if w in candidate:
+                                            candidate = candidate.replace(w, "").strip()
+                                    if candidate:
+                                        city = candidate
+                                        break
+
+                            if not city:
+                                # 模式2：取 "天气" 前最可能的词（去掉介词和提示词）
+                                city_raw = question.split("天气")[0].strip() if "天气" in question else question
+                                for t in ["明天", "后天", "今天", "昨天", "大后天", "未来", "一周", "一周内",
+                                           "根据", "工具", "中心", "的", "api", "接口", "查询", "查", "一下",
+                                           "交通", "请你"]:
+                                    city_raw = city_raw.replace(t, "").strip()
+                                city = city_raw if city_raw else question
+
+                            args["city"] = city
+                            # 默认只查当天
+                            args["days"] = 1
                             # 智能判断天数
                             if any(w in question for w in ["后天", "大后天"]):
                                 args["days"] = 3

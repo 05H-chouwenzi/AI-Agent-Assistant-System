@@ -5,6 +5,16 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
+# ========== LangChain 版本兼容补丁 ==========
+# langchain 1.3.x 移除了旧的 debug/verbose 属性，
+# 但 langchain-core 仍通过 langchain.debug 做向后兼容。
+# 此处手动补齐，避免 AttributeError。
+import langchain
+if not hasattr(langchain, "debug"):
+    langchain.debug = False
+if not hasattr(langchain, "verbose"):
+    langchain.verbose = False
+
 from utils.exception_handlers import (
     http_exception_handler,
     integrity_error_handler,

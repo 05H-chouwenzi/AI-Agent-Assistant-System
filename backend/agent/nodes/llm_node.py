@@ -40,14 +40,6 @@ def build_prompt(state: AgentState) -> str:
         return f"你是一个企业助手。请直接回答用户问题。\n\n用户问题：{question}"
 
 
-def llm_node(state: AgentState) -> AgentState:
-    """根据检索结果或工具生成最终回答"""
-    prompt = build_prompt(state)
-    answer = call_llm("你是一个专业的企业 AI 助手，请用中文回答。", prompt, history=state.get("history"))
-    state["final_answer"] = answer
-    return state
-
-
 def prompt_builder_node(state: AgentState) -> AgentState:
     """构建 LLM 提示词并写入 state['prompt']，不调用 LLM API
 

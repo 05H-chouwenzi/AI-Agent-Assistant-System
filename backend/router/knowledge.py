@@ -5,16 +5,16 @@ import shutil
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
 
 from database.session import get_db
-from models.knowledge_doc import KnowledgeDoc
 from models.user import User
 from utils.auth import get_current_user
 from rag.loader import load_document, IMAGE_SUFFIXES
 from rag.splitter import split_text
 from rag.embedding import embed_texts
 from rag.vector_store import add_vectors, count, remove_by_source
+from logs.operation_logger import OperationLogger, Actions
+from crud import knowledge_doc as doc_crud
 
 router = APIRouter(prefix="/api/knowledge", tags=["知识库"])
 
@@ -68,7 +68,8 @@ def upload_doc(
     add_vectors(vectors, docs_meta)
 
     # 7. 存入 MySQL（关联用户）
-    doc_record = KnowledgeDoc(
+    doc_record = doc_crud.create_doc(
+        db,
         user_id=current_user.id,
         title=file.filename,
         content=content[:500],
@@ -76,9 +77,20 @@ def upload_doc(
         source=str(file_path),
         status="completed",
     )
-    db.add(doc_record)
-    db.commit()
-    db.refresh(doc_record)
+
+    # ★ 记录操作日志
+    OperationLogger.log_knowledge_event(
+        db,
+        action=Actions.KNOWLEDGE_UPLOAD,
+        user_id=current_user.id,
+        doc_title=file.filename,
+        detail={
+            "chunks": len(chunks),
+            "file_type": suffix,
+            "total_vectors": count(),
+        },
+        success=True,
+    )
 
     return {
         "message": "上传成功",
@@ -97,14 +109,18 @@ def list_docs(
     current_user: User = Depends(get_current_user),
 ):
     """获取全部文档列表（分页）"""
-    q = db.query(KnowledgeDoc)
-    total = q.count()
-    items = (
-        q.order_by(desc(KnowledgeDoc.created_at))
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
+    total, items = doc_crud.list_docs(db, page, page_size)
+
+    # ★ 记录查看操作
+    OperationLogger.log_knowledge_event(
+        db,
+        action=Actions.KNOWLEDGE_LIST,
+        user_id=current_user.id,
+        doc_title=f"文档列表(共{total}条)",
+        detail={"page": page, "page_size": page_size, "total": total},
+        success=True,
     )
+
     return {
         "total": total,
         "page": page,
@@ -130,20 +146,27 @@ def delete_doc(
     current_user: User = Depends(get_current_user),
 ):
     """删除自己的文档（MySQL + FAISS 向量同步删除）"""
-    doc = (
-        db.query(KnowledgeDoc)
-        .filter(KnowledgeDoc.id == doc_id, KnowledgeDoc.user_id == current_user.id)
-        .first()
-    )
+    doc = doc_crud.get_doc(db, doc_id, current_user.id)
     if not doc:
         raise HTTPException(404, "文档不存在")
+
+    doc_title = doc.title
 
     # 1. 先从共享 FAISS 移除该文档的所有向量块
     removed = remove_by_source(doc.title)
 
     # 2. 再删 MySQL 记录
-    db.delete(doc)
-    db.commit()
+    doc_crud.delete_doc(db, doc_id, current_user.id)
+
+    # ★ 记录操作日志
+    OperationLogger.log_knowledge_event(
+        db,
+        action=Actions.KNOWLEDGE_DELETE,
+        user_id=current_user.id,
+        doc_title=doc_title,
+        detail={"removed_vectors": removed, "total_vectors": count()},
+        success=True,
+    )
 
     return {
         "message": "删除成功",
