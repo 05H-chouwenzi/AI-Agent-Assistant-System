@@ -19,15 +19,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 RUN python -m pip install --upgrade pip && \
     pip install -i https://mirrors.cloud.tencent.com/pypi/simple \
     --trusted-host mirrors.cloud.tencent.com \
     -r requirements.txt
 
-# 复制项目
-COPY . .
+# 复制项目（上下文现在是项目根目录）
+COPY backend/ .
 
 # 创建目录
 RUN mkdir -p \

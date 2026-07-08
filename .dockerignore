@@ -1,3 +1,6 @@
+# Git（避免把整个 .git 传到 Docker daemon）
+.git/
+
 # Python
 __pycache__/
 *.py[cod]
