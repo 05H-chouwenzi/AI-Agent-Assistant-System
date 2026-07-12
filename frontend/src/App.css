@@ -144,9 +144,6 @@ body {
 .message-content { flex: 1; min-width: 0; padding-top: 4px; }
 .message-bubble { font-size: 15px; line-height: 1.75; color: var(--text); }
 .message-tool-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.tool-call-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 500; background: var(--green); color: #fff; cursor: pointer; transition: opacity .15s; border: none; }
-.tool-call-chip:hover { opacity: .8; }
-.tool-call-chip svg { flex-shrink: 0; }
 .typing { display: flex; gap: 4px; padding: 6px 0; }
 .typing .dot { width: 6px; height: 6px; border-radius: 50%; background: #ccc; animation: bounce 1.2s infinite both; }
 .typing .dot:nth-child(2) { animation-delay: .2s; }
@@ -517,4 +514,100 @@ body {
   .tool-grid { grid-template-columns: 1fr; }
   .features-grid { grid-template-columns: 1fr; }
   .suggestions { grid-template-columns: 1fr; }
+}
+
+/* ============ 全局思考指示器 ============ */
+/* AI 在非聊天页面思考时的浮动提示条 */
+.global-thinking-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius-sm, 10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  animation: global-bar-slide-up 0.3s ease-out;
+  max-width: 90vw;
+}
+
+.global-thinking-bar:hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  transform: translateX(-50%) translateY(-2px);
+  border-color: #6366f1;
+}
+
+@keyframes global-bar-slide-up {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.global-thinking-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  height: 16px;
+}
+
+.global-thinking-dots .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6366f1;
+  animation: global-dot-bounce 1.2s ease-in-out infinite;
+}
+
+.global-thinking-dots .dot:nth-child(2) { animation-delay: 0.2s; }
+.global-thinking-dots .dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes global-dot-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-8px); opacity: 1; }
+}
+
+.global-thinking-text {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.global-thinking-hint {
+  font-size: 11px;
+  color: #6366f1;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 侧边栏 AI 助手思考状态圆点 */
+.nav-thinking-badge {
+  display: inline-flex;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6366f1;
+  color: transparent;
+  animation: nav-blink 1.2s ease-in-out infinite;
+  margin-right: 2px;
+  flex-shrink: 0;
+  font-size: 0;
+}
+
+@keyframes nav-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }

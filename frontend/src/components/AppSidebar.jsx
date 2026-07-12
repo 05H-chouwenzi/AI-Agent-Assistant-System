@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getConversations, createConversation, deleteConversation } from "../api/chat";
 import ConfirmDialog from "./ConfirmDialog";
+import { useChat } from "../contexts/ChatContext";
 
 const NAV_ITEMS = [
   { path: "/dashboard", label: "仪表盘", icon: (
@@ -42,6 +43,7 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
   const [convs, setConvs] = useState([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const chatNavRef = useRef();
+  const { isThinking, thinkingStatus } = useChat();
 
   useEffect(() => {
     function handleClick(e) {
@@ -101,6 +103,7 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
                 <div className={"nav-item" + (location.pathname.startsWith("/chat") ? " active" : "")} onClick={() => { setChatPop(false); navigate("/chat"); }}>
                   <span className="nav-icon">{item.icon}</span>
                   <span className="nav-label nav-chat-label">{item.label}</span>
+                  {isThinking && <span className="nav-thinking-badge" title={thinkingStatus}>●</span>}
                   <span className="nav-popover-btn" onClick={(e) => { e.stopPropagation(); handleChatToggle(); }} title="切换对话">▾</span>
                   <span className="nav-add-btn" onClick={(e) => { e.stopPropagation(); handleNewChat(); }} title="新建对话">+</span>
                 </div>
@@ -156,11 +159,20 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
               </svg>
             </div>
             <span>{user}</span>
-            
+
           </div>
         </div>
       </div>
       <div className={"app-content" + (isChat ? " chat-content" : "")}>{children}</div>
+      {!isChat && isThinking && (
+        <div className="global-thinking-bar" onClick={() => navigate("/chat")} title="点击回到 AI 助手查看回复">
+          <span className="global-thinking-dots">
+            <span className="dot" /><span className="dot" /><span className="dot" />
+          </span>
+          <span className="global-thinking-text">{thinkingStatus || "🤖 AI 正在思考中..."}</span>
+          <span className="global-thinking-hint">点击查看 →</span>
+        </div>
+      )}
     </div>
   );
 }

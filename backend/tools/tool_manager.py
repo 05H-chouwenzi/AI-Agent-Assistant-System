@@ -129,12 +129,18 @@ def register_default_tools(manager: Optional[ToolManager] = None) -> ToolManager
     from tools.mysql_tool import MySQLTool
     from tools.http_tool import HttpTool
     from tools.rag_tool import RAGTool
+    from tools.calculator_tool import CalculatorTool
+    from tools.datetime_tool import DateTimeTool
+    from tools.greeting_tool import GreetingTool
 
     manager.register_many([
         WeatherTool(),
         MySQLTool(),
         HttpTool(),
         RAGTool(),
+        CalculatorTool(),
+        DateTimeTool(),
+        GreetingTool(),
     ])
 
     manager._initialized = True

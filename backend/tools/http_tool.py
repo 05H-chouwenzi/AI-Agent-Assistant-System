@@ -14,6 +14,7 @@ ALLOWED_HOSTS = [
     "api.github.com",
     "api.open-meteo.com",
     "wttr.in",
+    "api.exchangerate-api.com",
     "jsonplaceholder.typicode.com",
     "httpbin.org",
 ]

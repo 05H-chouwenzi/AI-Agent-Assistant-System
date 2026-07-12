@@ -65,6 +65,11 @@ export default function ChatPage() {
   const [searchParams] = useSearchParams();
   const fileInputRef = useRef(null);
 
+  // 消息更新时自动滚动到底部
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   useEffect(() => {
     const convId = searchParams.get("conv");
     if (convId) {

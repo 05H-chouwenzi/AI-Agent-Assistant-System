@@ -1,11 +1,31 @@
 """
 Weather Tool —— 天气查询工具（基于 wttr.in 免费 API）
+
+性能特性：
+  - 内置 10 分钟缓存（每个城市独立），重复查询无需网络请求
+  - 网络超时 5 秒，避免慢 API 拖慢响应
 """
 import json
 import time
 import urllib.request
 import urllib.parse
+import urllib.error
 from tools.base_tool import BaseTool, ToolResult
+
+# ---------- 内存缓存：10 分钟 TTL ----------
+_cache: dict[str, tuple[float, dict]] = {}      # city -> (timestamp, data)
+CACHE_TTL = 600  # 10 分钟（600秒）
+
+def _get_cached(city: str) -> dict | None:
+    """获取缓存的天气数据"""
+    entry = _cache.get(city)
+    if entry and (time.time() - entry[0]) < CACHE_TTL:
+        return entry[1]
+    return None
+
+def _set_cache(city: str, data: dict):
+    """写入天气缓存"""
+    _cache[city] = (time.time(), data)
 
 
 class WeatherTool(BaseTool):
@@ -44,12 +64,28 @@ class WeatherTool(BaseTool):
             return ToolResult(success=False, error="缺少城市参数", tool_name=self.name)
 
         start = time.time()
+
+        # ====== 1. 查缓存（相同城市 10 分钟内直接返回）======
+        cached = _get_cached(city)
+        if cached:
+            # 如果有缓存的预报数据，或不需要预报，直接返回缓存
+            if "预报" in cached or days <= 1:
+                elapsed = (time.time() - start) * 1000
+                return ToolResult(
+                    success=True,
+                    data=cached,
+                    tool_name=self.name,
+                    execution_time_ms=round(elapsed, 2)
+                )
+            # 需要预报但缓存没有 → 继续从网络刷新（会连带缓存预报）
+
+        # ====== 2. 从网络获取 ======
         try:
             encoded_city = urllib.parse.quote(city)
             url = f"https://wttr.in/{encoded_city}?format=j1&lang=zh"
 
             req = urllib.request.Request(url, headers={"User-Agent": "AI-Agent-Assistant/1.0"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:  # 超时从 10s 改为 5s
                 data = json.loads(resp.read().decode("utf-8"))
 
             # 解析关键字段
@@ -81,6 +117,9 @@ class WeatherTool(BaseTool):
                         "平均温": f"{avg_temp}°C",
                     })
                 weather_info["预报"] = forecasts
+
+            # ====== 3. 写入缓存 ======
+            _set_cache(city, weather_info)
 
             elapsed = (time.time() - start) * 1000
             return ToolResult(
