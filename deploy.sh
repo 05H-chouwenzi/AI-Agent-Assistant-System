@@ -154,6 +154,14 @@ if [[ "$RECONFIG" =~ ^[Yy]$ ]]; then
     warn "未填写 API Key，LLM 功能暂时不可用，后续可编辑 .env 补充"
   fi
 
+  # 聊天 LLM 配置（可选，不填则 fallback 到 DashScope）
+  echo ""
+  echo -e "${YELLOW}── 聊天 LLM 配置（用于 AI 对话，可选）──${NC}"
+  echo -e "${YELLOW}不填则使用上面的 DashScope Key 和默认模型${NC}"
+  read -p "LLM API Key (留空=同 DashScope): " LLM_KEY
+  read -p "LLM Base URL (留空=DashScope): " LLM_URL
+  read -p "LLM 模型名 (留空=qwen-plus): " LLM_MODEL_NAME
+
   # 写入 .env（用 echo 而非 heredoc 防止密码含特殊字符时出问题）
   > "$ENV_FILE"
   echo "# ---- MySQL 数据库配置 ----" >> "$ENV_FILE"
@@ -165,6 +173,11 @@ if [[ "$RECONFIG" =~ ^[Yy]$ ]]; then
   echo "" >> "$ENV_FILE"
   echo "# ---- 阿里云 DashScope API ----" >> "$ENV_FILE"
   echo "DASHSCOPE_API_KEY=$DASHSCOPE_KEY" >> "$ENV_FILE"
+  echo "" >> "$ENV_FILE"
+  echo "# ---- 聊天 LLM 配置 ----" >> "$ENV_FILE"
+  echo "LLM_API_KEY=${LLM_KEY:-$DASHSCOPE_KEY}" >> "$ENV_FILE"
+  echo "LLM_BASE_URL=${LLM_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}" >> "$ENV_FILE"
+  echo "LLM_MODEL=${LLM_MODEL_NAME:-qwen-plus}" >> "$ENV_FILE"
 
   ok ".env 文件已生成"
 fi
