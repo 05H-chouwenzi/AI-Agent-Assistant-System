@@ -41,9 +41,6 @@ async def chat_websocket(
     if not user:
         await websocket.close(code=4001, reason="Unauthorized")
         return
-    if not getattr(user, "tenant_id", None) and not getattr(user, "is_superuser", False):
-        await websocket.close(code=4003, reason="No tenant access")
-        return
     await websocket.accept()
 
     async with AsyncSessionLocal() as db:
