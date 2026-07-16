@@ -3,7 +3,7 @@
  * 替代 SSE，支持 Agent 路由轨迹 & 工具状态推送
  */
 
-const WS_BASE = import.meta.env.VITE_WS_URL || "ws://localhost:8000";
+const WS_BASE = import.meta.env.VITE_WS_URL || (import.meta.env.PROD ? "" : "ws://localhost:8000");
 
 /**
  * 连接 WebSocket 聊天
