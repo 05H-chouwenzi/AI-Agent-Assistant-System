@@ -36,3 +36,9 @@ if not DATABASE_URL:
 # ========== 向量存储配置 ==========
 VECTOR_STORE_PROVIDER = os.getenv("VECTOR_STORE_PROVIDER", "faiss")
 PGVECTOR_DATABASE_URL = os.getenv("PGVECTOR_DATABASE_URL", "")
+
+# ========== CORS 配置 ==========
+# 生产环境设置为你的公网 IP 或域名，如 http://106.53.59.88
+# 多个来源用逗号分隔，如 http://a.com,http://b.com
+_default_cors = "http://localhost:5173,http://localhost:4173,http://localhost"
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", _default_cors).split(",") if o.strip()]

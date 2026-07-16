@@ -32,6 +32,7 @@ from contextlib import asynccontextmanager
 from database.session import engine, get_db
 from models.base import Base
 from sqlalchemy import inspect as sa_inspect
+from config.settings import CORS_ORIGINS
 
 # 导入所有模型
 from models.user import User
@@ -94,7 +95,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173", "http://localhost"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -162,6 +162,13 @@ if [[ "$RECONFIG" =~ ^[Yy]$ ]]; then
   read -p "LLM Base URL (留空=DashScope): " LLM_URL
   read -p "LLM 模型名 (留空=qwen-plus): " LLM_MODEL_NAME
 
+  # CORS 配置（必填，影响 WebSocket 握手）
+  echo ""
+  echo -e "${YELLOW}── CORS 跨域来源（必填，影响 WebSocket 握手）──${NC}"
+  echo -e "${YELLOW}生产环境填你的公网 IP 或域名，如 http://106.53.59.88${NC}"
+  read -p "CORS 来源（多个用逗号分隔，留空=本地默认值）: " CORS_ORIGINS
+  CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:4173,http://localhost}
+
   # 写入 .env（用 echo 而非 heredoc 防止密码含特殊字符时出问题）
   > "$ENV_FILE"
   echo "# ---- MySQL 数据库配置 ----" >> "$ENV_FILE"
@@ -178,6 +185,9 @@ if [[ "$RECONFIG" =~ ^[Yy]$ ]]; then
   echo "LLM_API_KEY=${LLM_KEY:-$DASHSCOPE_KEY}" >> "$ENV_FILE"
   echo "LLM_BASE_URL=${LLM_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}" >> "$ENV_FILE"
   echo "LLM_MODEL=${LLM_MODEL_NAME:-qwen-plus}" >> "$ENV_FILE"
+  echo "" >> "$ENV_FILE"
+  echo "# ---- CORS 跨域来源 ----" >> "$ENV_FILE"
+  echo "CORS_ORIGINS=$CORS_ORIGINS" >> "$ENV_FILE"
 
   ok ".env 文件已生成"
 fi
@@ -192,7 +202,7 @@ DB_NAME=${DB_NAME:-ai_assistant}
 # ============================================================
 title "4/6  配置 JWT 密钥"
 
-ENV_FILE="$PROJECT_DIR/backend/.env"
+# 使用根目录 .env（Docker 容器实际读取的 env_file）
 if [ -f "$ENV_FILE" ] && grep -qE '^JWT_SECRET=(你的JWT密钥|fO8Zo5CjNWwhvD9Sa0U4n7tubpGHA3c1VPdBLXqsT6iMxzYQr2ymIJFeKRgElk)$' "$ENV_FILE" 2>/dev/null; then
   info "检测到默认/占位 JWT 密钥，正在生成随机密钥..."
   JWT_SECRET=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 64)
@@ -202,12 +212,12 @@ if [ -f "$ENV_FILE" ] && grep -qE '^JWT_SECRET=(你的JWT密钥|fO8Zo5CjNWwhvD9S
   else
     sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" "$ENV_FILE"
   fi
-  ok "JWT 密钥已更新到 backend/.env"
+  ok "JWT 密钥已更新到 .env"
 elif ! grep -q '^JWT_SECRET=' "$ENV_FILE" 2>/dev/null; then
-  info "backend/.env 缺少 JWT_SECRET，正在生成..."
+  info ".env 缺少 JWT_SECRET，正在生成..."
   JWT_SECRET=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 64)
   echo "JWT_SECRET=$JWT_SECRET" >> "$ENV_FILE"
-  ok "JWT_SECRET 已追加到 backend/.env"
+  ok "JWT_SECRET 已追加到 .env"
 else
   ok "JWT 密钥已自定义（跳过）"
 fi
