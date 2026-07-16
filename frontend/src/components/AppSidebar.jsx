@@ -104,8 +104,10 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
                   <span className="nav-icon">{item.icon}</span>
                   <span className="nav-label nav-chat-label">{item.label}</span>
                   {isThinking && <span className="nav-thinking-badge" title={thinkingStatus}>●</span>}
-                  <span className="nav-popover-btn" onClick={(e) => { e.stopPropagation(); handleChatToggle(); }} title="切换对话">▾</span>
-                  <span className="nav-add-btn" onClick={(e) => { e.stopPropagation(); handleNewChat(); }} title="新建对话">+</span>
+                  <span className="nav-btn-group">
+                    <span className="nav-add-btn" onClick={(e) => { e.stopPropagation(); handleNewChat(); }} title="新建对话">+</span>
+                    <span className="nav-popover-btn" onClick={(e) => { e.stopPropagation(); handleChatToggle(); }} title="切换对话">▾</span>
+                  </span>
                 </div>
                 <div className={"chat-popover" + (chatPop ? " open" : "")}>
                   {convs.length === 0 ? (

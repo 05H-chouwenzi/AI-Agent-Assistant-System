@@ -60,7 +60,8 @@ body {
 
 /* ============ AI 助手导航项操作按钮 ============ */
 .nav-add-btn { width: 22px; height: 22px; border-radius: 6px; font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: inherit; opacity: 0; transition: all .15s; }
-.nav-popover-btn { width: 22px; height: 22px; border-radius: 6px; font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: inherit; opacity: 0; transition: all .15s; margin-left: auto; }
+.nav-popover-btn { width: 22px; height: 22px; border-radius: 6px; font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: inherit; opacity: 0; transition: all .15s; }
+.nav-btn-group { margin-left: auto; display: flex; align-items: center; gap: 2px; }
 .nav-item:hover .nav-add-btn, .nav-item:hover .nav-popover-btn { opacity: .6; }
 .nav-add-btn:hover, .nav-popover-btn:hover { opacity: 1 !important; background: var(--sidebar-active); }
 .nav-popover-btn.open { opacity: .8; background: var(--sidebar-active); }
