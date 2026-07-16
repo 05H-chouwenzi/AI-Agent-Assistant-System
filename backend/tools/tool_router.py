@@ -277,9 +277,9 @@ class ToolRouter:
 
         try:
             from openai import OpenAI
-            from config.settings import DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL
+            from config.settings import LLM_API_KEY, LLM_BASE_URL
 
-            client = OpenAI(api_key=DASHSCOPE_API_KEY, base_url=DASHSCOPE_BASE_URL)
+            client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
             messages = [{"role": "system", "content": ROUTER_SYSTEM_PROMPT}]
 

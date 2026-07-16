@@ -333,3 +333,76 @@ class OperationLogger:
             resource_type="conversation",
             resource_id=str(conv_id) if conv_id else None,
         )
+
+# ── 异步后台写入（火抛，不阻塞请求路径）──────────────────────
+
+import asyncio
+
+async def async_log_chat_question(
+    *,
+    user_id: int,
+    question: str,
+    task_type: str,
+    is_stream: bool = False,
+    conversation_id: int | None = None,
+    elapsed_ms: int | None = None,
+    answer: str | None = None,
+):
+    """异步后台写入聊天操作日志，不阻塞请求路径"""
+    def _sync_write():
+        db = SessionLocal()
+        try:
+            OperationLogger.log_chat_question(
+                db, user_id=user_id, question=question,
+                task_type=task_type, is_stream=is_stream,
+                conversation_id=conversation_id,
+                elapsed_ms=elapsed_ms, answer=answer,
+            )
+        except Exception as e:
+            logger.warning(f"异步日志写入失败（可忽略）: {e}")
+        finally:
+            db.close()
+    await asyncio.to_thread(_sync_write)
+
+
+async def async_log_conversation_event(
+    *,
+    action: str,
+    user_id: int,
+    conv_title: str,
+    conv_id: int | None = None,
+):
+    """异步后台写入会话操作日志"""
+    def _sync_write():
+        db = SessionLocal()
+        try:
+            OperationLogger.log_conversation_event(
+                db, action=action, user_id=user_id,
+                conv_title=conv_title, conv_id=conv_id,
+            )
+        except Exception as e:
+            logger.warning(f"异步会话日志写入失败（可忽略）: {e}")
+        finally:
+            db.close()
+    await asyncio.to_thread(_sync_write)
+
+async def async_log_knowledge_event(
+    *,
+    action: str,
+    user_id: int,
+    doc_title: str,
+    detail: dict | None = None,
+    success: bool = True,
+):
+    def _sync_write():
+        db = SessionLocal()
+        try:
+            OperationLogger.log_knowledge_event(
+                db, action=action, user_id=user_id,
+                doc_title=doc_title, detail=detail, success=success,
+            )
+        except Exception as e:
+            logger.warning(f"异步知识库日志写入失败（可忽略）: {e}")
+        finally:
+            db.close()
+    await asyncio.to_thread(_sync_write)

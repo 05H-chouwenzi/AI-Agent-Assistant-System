@@ -83,3 +83,46 @@ class RAGTool(BaseTool):
             return ToolResult(success=False, error="RAG 检索模块未就绪", tool_name=self.name)
         except Exception as e:
             return ToolResult(success=False, error=f"检索失败: {str(e)}", tool_name=self.name)
+
+    async def aexecute(self, **kwargs) -> ToolResult:
+        """异步版本：使用 AsyncOpenAI embedding，真正不阻塞事件循环"""
+        query = kwargs.get("query", "").strip()
+        top_k = min(kwargs.get("top_k", 5), 10)
+
+        if not query:
+            return ToolResult(success=False, error="缺少查询参数", tool_name=self.name)
+
+        start = time.time()
+        try:
+            from rag.retriever import aretrieve
+
+            docs = await aretrieve(query, top_k=top_k)
+
+            if not docs:
+                return ToolResult(
+                    success=True,
+                    data={"查询": query, "结果": "知识库中暂无相关文档", "文档数": 0},
+                    tool_name=self.name,
+                )
+
+            formatted = []
+            for i, doc in enumerate(docs, 1):
+                formatted.append({
+                    "序号": i,
+                    "相关度": doc.get("score", 0),
+                    "来源": doc.get("source", "未知"),
+                    "内容": doc.get("content", "")[:500],
+                })
+
+            elapsed = (time.time() - start) * 1000
+            return ToolResult(
+                success=True,
+                data={"查询": query, "文档数": len(formatted), "结果": formatted},
+                tool_name=self.name,
+                execution_time_ms=round(elapsed, 2),
+            )
+
+        except ImportError:
+            return ToolResult(success=False, error="RAG 检索模块未就绪", tool_name=self.name)
+        except Exception as e:
+            return ToolResult(success=False, error=f"检索失败: {str(e)}", tool_name=self.name)

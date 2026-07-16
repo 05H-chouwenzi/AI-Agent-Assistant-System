@@ -5,11 +5,11 @@ import json
 import time
 from typing import Optional
 from openai import OpenAI
-from config.settings import DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL, LLM_MODEL
+from config.settings import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 
 client = OpenAI(
-    api_key=DASHSCOPE_API_KEY,
-    base_url=DASHSCOPE_BASE_URL,
+    api_key=LLM_API_KEY,
+    base_url=LLM_BASE_URL,
 )
 
 

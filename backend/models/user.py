@@ -1,4 +1,4 @@
-from sqlalchemy import Column,String,Boolean
+from sqlalchemy import Column, String, Boolean, Integer
 from sqlalchemy.orm import Mapped,mapped_column
 from .base import Base,TimestampMixin
 
@@ -12,6 +12,10 @@ class User(Base,TimestampMixin):
     )
     hashed_password:Mapped[str]=mapped_column(
         String(255),nullable=False,comment="密码"
+    )
+    tenant_id: Mapped[int] = mapped_column(Integer, nullable=True, default=None, comment="所属租户ID")
+    role: Mapped[str] = mapped_column(
+        String(20),default="admin",comment="角色: admin/member"
     )
     is_active:Mapped[bool]=mapped_column(
         Boolean,default=True,comment="是否激活"

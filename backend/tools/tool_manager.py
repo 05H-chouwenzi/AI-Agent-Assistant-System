@@ -8,6 +8,7 @@ Tool Manager —— 工具注册中心 & 执行调度器
 4. 收集所有 tools 的 function schema（给 LLM function calling 用）
 5. 执行指定工具并统一返回 ToolResult
 """
+import asyncio
 import time
 from typing import Dict, List, Optional
 from tools.base_tool import BaseTool, ToolResult
@@ -91,6 +92,42 @@ class ToolManager:
             return result
         except Exception as e:
             logger.error(f"工具 [{name}] 执行异常: {str(e)}")
+            return ToolResult(
+                success=False,
+                error=f"工具执行异常: {str(e)}",
+                tool_name=name,
+            )
+
+    async def aexecute(self, name: str, **kwargs) -> ToolResult:
+        """异步执行指定工具（不阻塞事件循环）
+
+        优先使用工具自身的 async 实现（aexecute），
+        若无则放入线程池执行同步版本。
+        """
+        tool = self._tools.get(name)
+        if tool is None:
+            return ToolResult(
+                success=False,
+                error=f"工具 [{name}] 未注册。可用工具: {', '.join(self.list_names())}",
+                tool_name=name,
+            )
+
+        logger.info(f"异步执行工具: {name}, 参数: {kwargs}")
+        start = time.time()
+        try:
+            # 优先使用工具的异步方法
+            if hasattr(tool, "aexecute"):
+                result = await tool.aexecute(**kwargs)
+            else:
+                result = await asyncio.to_thread(tool.execute, **kwargs)
+            result.tool_name = name
+            elapsed = (time.time() - start) * 1000
+            if result.execution_time_ms == 0:
+                result.execution_time_ms = round(elapsed, 2)
+            logger.info(f"工具 [{name}] 执行{'成功' if result.success else '失败'} ({result.execution_time_ms}ms)")
+            return result
+        except Exception as e:
+            logger.error(f"工具 [{name}] 异步执行异常: {str(e)}")
             return ToolResult(
                 success=False,
                 error=f"工具执行异常: {str(e)}",

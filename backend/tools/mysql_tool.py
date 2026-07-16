@@ -4,8 +4,11 @@ MySQL Tool —— 数据库查询工具（只读，安全查询）
 import json
 import time
 import re
+import asyncio
 from tools.base_tool import BaseTool, ToolResult, _json_safe
 from config.settings import DATABASE_URL
+from database.session import engine as _db_engine
+from sqlalchemy import text as sa_text
 
 
 class MySQLTool(BaseTool):
@@ -101,25 +104,11 @@ class MySQLTool(BaseTool):
             query = f"{query.rstrip(';')} LIMIT {limit}"
 
         start = time.time()
-        conn = None
         try:
-            import pymysql
-            db_info = self._parse_db_url()
-
-            conn = pymysql.connect(
-                host=db_info["host"],
-                port=db_info["port"],
-                user=db_info["user"],
-                password=db_info["password"],
-                database=db_info["database"],
-                charset="utf8mb4",
-                connect_timeout=10,
-                read_timeout=15,
-            )
-
-            with conn.cursor(pymysql.cursors.DictCursor) as cursor:
-                cursor.execute(query)
-                rows = cursor.fetchall()
+            # 使用 SQLAlchemy 连接池（复用已有连接，避免每次 TCP 握手）
+            with _db_engine.connect() as conn:
+                result = conn.execute(sa_text(query))
+                rows = [dict(row._mapping) for row in result]
 
             elapsed = (time.time() - start) * 1000
             return ToolResult(
@@ -135,13 +124,67 @@ class MySQLTool(BaseTool):
 
         except ImportError:
             return ToolResult(success=False, error="pymysql 未安装", tool_name=self.name)
-        except pymysql.Error as e:
-            return ToolResult(success=False, error=f"数据库错误: {str(e)}", tool_name=self.name)
         except Exception as e:
-            return ToolResult(success=False, error=f"查询失败: {str(e)}", tool_name=self.name)
-        finally:
-            if conn:
+            return ToolResult(success=False, error=f"数据库错误: {str(e)}", tool_name=self.name)
+
+    async def aexecute(self, **kwargs) -> ToolResult:
+        """异步版本：将同步数据库操作放入线程池，不阻塞事件循环"""
+        query = kwargs.get("query", "").strip()
+        limit = min(kwargs.get("limit", 50), 200)
+
+        if not query:
+            return ToolResult(success=False, error="缺少 SQL 查询参数", tool_name=self.name)
+
+        if not self._is_readonly(query):
+            return ToolResult(
+                success=False,
+                error=f"只允许只读操作 ({', '.join(sorted(self._READONLY_KEYWORDS))})，"
+                      f"当前查询被拒绝。如需执行写操作，请联系管理员。",
+                tool_name=self.name,
+            )
+
+        if "LIMIT" not in query.upper():
+            query = f"{query.rstrip(';')} LIMIT {limit}"
+
+        start = time.time()
+        try:
+            # 使用连接池 + 线程池，数据库操作不阻塞事件循环
+            import pymysql
+            db_info = self._parse_db_url()
+
+            def _do_query():
+                conn = pymysql.connect(
+                    host=db_info["host"],
+                    port=db_info["port"],
+                    user=db_info["user"],
+                    password=db_info["password"],
+                    database=db_info["database"],
+                    charset="utf8mb4",
+                    connect_timeout=10,
+                    read_timeout=15,
+                )
                 try:
+                    with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+                        cursor.execute(query)
+                        return cursor.fetchall()
+                finally:
                     conn.close()
-                except Exception:
-                    pass
+
+            rows = await asyncio.to_thread(_do_query)
+
+            elapsed = (time.time() - start) * 1000
+            return ToolResult(
+                success=True,
+                data={
+                    "查询": query,
+                    "行数": len(rows),
+                    "结果": _json_safe(rows),
+                },
+                tool_name=self.name,
+                execution_time_ms=round(elapsed, 2),
+            )
+
+        except ImportError:
+            return ToolResult(success=False, error="pymysql 未安装", tool_name=self.name)
+        except Exception as e:
+            return ToolResult(success=False, error=f"数据库错误: {str(e)}", tool_name=self.name)

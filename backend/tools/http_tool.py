@@ -5,6 +5,7 @@ import json
 import time
 import urllib.request
 import urllib.error
+import httpx
 from urllib.parse import urlparse
 from tools.base_tool import BaseTool, ToolResult
 
@@ -158,6 +159,79 @@ class HttpTool(BaseTool):
             return ToolResult(
                 success=False,
                 error=f"网络连接失败: {str(e.reason)}",
+                tool_name=self.name,
+            )
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                error=f"请求失败: {str(e)}",
+                tool_name=self.name,
+            )
+
+    async def aexecute(self, **kwargs) -> ToolResult:
+        """异步版本：使用 httpx.AsyncClient，真正不阻塞事件循环"""
+        url = kwargs.get("url", "").strip()
+        method = kwargs.get("method", "GET").upper().strip()
+        headers = kwargs.get("headers") or {}
+        body = kwargs.get("body")
+
+        if not url:
+            return ToolResult(success=False, error="缺少 URL 参数", tool_name=self.name)
+        if method not in ("GET", "POST", "PUT", "DELETE"):
+            return ToolResult(success=False, error=f"不支持的 HTTP 方法: {method}", tool_name=self.name)
+
+        allowed, reason = _is_url_allowed(url)
+        if not allowed:
+            return ToolResult(success=False, error=reason, tool_name=self.name)
+
+        start = time.time()
+        try:
+            req_headers = {
+                "User-Agent": "AI-Agent-Assistant/1.0",
+                "Accept": "application/json, text/plain, */*",
+            }
+            req_headers.update(headers)
+
+            content = None
+            if body and method in ("POST", "PUT"):
+                content = body
+                req_headers.setdefault("Content-Type", "application/json")
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.request(
+                    method, url, headers=req_headers, content=content
+                )
+                raw = resp.text
+                status_code = resp.status_code
+
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                parsed = raw[:2000]
+
+            elapsed = (time.time() - start) * 1000
+            return ToolResult(
+                success=True,
+                data={
+                    "状态码": status_code,
+                    "方法": method,
+                    "URL": url,
+                    "响应": parsed,
+                },
+                tool_name=self.name,
+                execution_time_ms=round(elapsed, 2),
+            )
+
+        except httpx.HTTPStatusError as e:
+            return ToolResult(
+                success=False,
+                error=f"HTTP {e.response.status_code}: {e.response.reason_phrase}",
+                tool_name=self.name,
+            )
+        except httpx.RequestError as e:
+            return ToolResult(
+                success=False,
+                error=f"网络连接失败: {str(e)}",
                 tool_name=self.name,
             )
         except Exception as e:

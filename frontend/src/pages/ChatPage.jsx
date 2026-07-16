@@ -104,7 +104,6 @@ export default function ChatPage() {
         <div className="chat-header">
           <div className="chat-header-left">
             <h2>AI Assistant</h2>
-            <span className="header-model-badge">qwen-plus</span>
           </div>
           <button className="header-clear-btn" onClick={clearMessages}>清空对话</button>
         </div>

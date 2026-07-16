@@ -1,67 +1,66 @@
+"""LangGraph Workflow —— 直线图（Worker 完成后直接结束）
+
+  START -> supervisor（路由）
+            ├── research / data / general（create_react_agent）
+            │       └── END
 """
-LangGraph Workflow —— 企业 AI 智能助手工作流图
-
-图结构:
-    START → planner_node
-               │ (conditional: task_type)
-          ┌────┼────┐
-          │    │    │
-          ▼    ▼    ▼
-        rag   tool  (direct → prompt_builder)
-          │    │
-          └────┘
-             │
-             ▼
-       prompt_builder_node → END
-
-LLM 调用（含流式）在图外由 API 层处理，保持图节点为纯数据流。
-"""
-from langgraph.graph import StateGraph, START, END
-from agent.state.agent_state import AgentState
-from agent.nodes.planner import planner_node
-from agent.nodes.rag_node import rag_node
-from agent.nodes.tool_node import tool_node
-from agent.nodes.llm_node import prompt_builder_node
-
-
-def route_after_planner(state: AgentState) -> str:
-    """根据 task_type 路由到下一个节点
-
-    Returns:
-        "rag" → RAG 知识库检索
-        "tool" → 工具调用
-        "direct" → 直接到 prompt_builder
-    """
-    return state.get("task_type", "direct")
+from agent.graph.nodes import (
+    data_node,
+    general_node,
+    research_node,
+    supervisor_node,
+)
+from agent.graph.router import (
+    route_from_supervisor,
+)
+from agent.graph.state import AgentState
 
 
 def _build_graph():
-    """构建并编译完整的 Agent 工作流图"""
+    from langgraph.graph import END, START, StateGraph
+
     graph = StateGraph(AgentState)
 
-    # ── 节点 ──
-    graph.add_node("planner", planner_node)
-    graph.add_node("rag", rag_node)
-    graph.add_node("tool", tool_node)
-    graph.add_node("prompt_builder", prompt_builder_node)
+    graph.add_node("supervisor", supervisor_node)
+    graph.add_node("research", research_node)
+    graph.add_node("data", data_node)
+    graph.add_node("general", general_node)
 
-    # ── 边 ──
-    graph.add_edge(START, "planner")
+    graph.add_edge(START, "supervisor")
     graph.add_conditional_edges(
-        "planner",
-        route_after_planner,
+        "supervisor",
+        route_from_supervisor,
         {
-            "rag": "rag",
-            "tool": "tool",
-            "direct": "prompt_builder",
+            "research": "research",
+            "data": "data",
+            "general": "general",
+            "end": END,
         },
     )
-    graph.add_edge("rag", "prompt_builder")
-    graph.add_edge("tool", "prompt_builder")
-    graph.add_edge("prompt_builder", END)
+
+    # Worker 完成后直接结束（不再循环回 supervisor）
+    for worker in ("research", "data", "general"):
+        graph.add_edge(worker, END)
 
     return graph.compile()
 
 
-# 全局单例 —— 模块导入时自动构建
-agent_graph = _build_graph()
+_agent_graph = None
+
+
+def get_agent_graph():
+    """懒加载 agent_graph（首次调用时才编译，避免导入时延迟）"""
+    global _agent_graph
+    if _agent_graph is None:
+        _agent_graph = _build_graph()
+    return _agent_graph
+
+
+# 向后兼容：保留 agent_graph 属性访问
+class _GraphProxy:
+    """代理对象，首次访问任意属性时才触发真正的图编译"""
+    def __getattr__(self, name):
+        return getattr(get_agent_graph(), name)
+
+
+agent_graph = _GraphProxy()

@@ -44,6 +44,17 @@ def register(req: UserRegisterRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="密码不能超过72位")
 
     user = user_crud.create_user(db, req.username, email, hash_password(req.password))
+
+    # 自动创建租户
+    from models.tenant import Tenant
+    tenant = Tenant(name=f"{req.username} 的工作空间")
+    db.add(tenant)
+    db.flush()
+    user.tenant_id = tenant.id
+    user.role = "admin"
+    db.commit()
+    db.refresh(user)
+
     return user
 
 

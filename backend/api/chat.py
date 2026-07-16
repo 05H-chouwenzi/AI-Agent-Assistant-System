@@ -1,56 +1,35 @@
-"""
-聊天接口 —— 接收用户消息，调用 Agent 节点，返回结果
+"""聊天接口（异步版）—— 统一走循环图
 
-新的处理流程：
-                 用户
-                   │
-           FastRouter（规则）
-           │              │
-        命中             未命中
-          │               │
-        Tool         Planner → ToolRouter → Tool
-          │               │
-    ┌─────┴─────┐    LLM 总结
-    │           │         │
-  is_final   需 LLM     返回
-    │           │
- Formatter   Prompt Builder
-    │           │
-   返回        LLM
-                │
-               返回
+完全匹配 ai-agent 架构：
+- 使用 LangChain 消息格式
+- result["messages"][-1] 提取最终回答
 """
+import asyncio
 import time
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from langchain_core.messages import AIMessage, HumanMessage
 
-from database.session import get_db
+from database.async_session import AsyncSessionLocal
+from database.async_crud import (
+    get_conversation, create_conversation,
+    get_conversation_messages, create_message,
+    update_conversation_title,
+)
+
 from models.user import User
-from utils.auth import get_current_user
-from agent.state.agent_state import AgentState
-from agent.workflow import agent_graph
+from utils.auth import get_current_user, require_tenant_access
+from agent.workflow.graph import agent_graph
+from agent.graph.state import AgentState
 from agent.nodes.fast_router import FastRouter
-from agent.nodes.formatter import Formatter
-from agent.nodes.llm_node import build_prompt
-from services.llm_service import call_llm
-from logs.operation_logger import OperationLogger, Actions
-from tools.tool_manager import get_tool_manager
-from crud import conversation as conv_crud
-from crud import message as msg_crud
+from tools.tool_manager import get_tool_manager, register_default_tools
+from tools.formatter import format_tool_result
+from logs.operation_logger import async_log_chat_question
+from logs.logger import logger
 
 router = APIRouter(prefix="/api/chat", tags=["聊天"])
 
-# 全局单例 —— 模块加载时初始化，避免每次请求重复创建
-_fast_router = FastRouter()
-_formatter = Formatter()
-
-# 默认系统提示词
-SYSTEM_PROMPT = (
-    "你是一个专业的企业 AI 助手，请用中文回答。"
-    "你可以使用工具中心的工具（天气查询、数据库查询、计算器、HTTP请求、知识库检索等）来获取实时数据。"
-    "如果用户需要查询天气等实时信息，优先使用相关工具。"
-)
+_DEFAULT_TITLE = "新对话"
 
 
 class ChatRequest(BaseModel):
@@ -66,314 +45,143 @@ class ChatResponse(BaseModel):
     final_answer: str
 
 
-def _load_history(db: Session, conv_id: int, user_id: int) -> list:
-    """加载会话历史消息"""
-    history = []
-    if conv_id and conv_id > 0:
-        conv = conv_crud.get_conversation(db, conv_id, user_id)
+async def _load_history_messages(conv_id: int, user_id: int) -> list:
+    """异步加载会话历史，转为 LangChain 消息列表"""
+    if conv_id <= 0:
+        return []
+    async with AsyncSessionLocal() as db:
+        conv = await get_conversation(db, conv_id, user_id)
         if not conv:
             raise HTTPException(status_code=404, detail="会话不存在")
-        past_messages = msg_crud.get_conversation_messages(db, conv_id)
-        for m in past_messages:
-            history.append({"role": m.role, "content": m.content})
-    return history
+        past = (await get_conversation_messages(db, conv_id))[-20:]  # 只取最近 20 条
+        messages = []
+        for m in past:
+            if m.role == "user":
+                messages.append(HumanMessage(content=m.content))
+            elif m.role == "assistant":
+                messages.append(AIMessage(content=m.content))
+        return messages
 
 
-def _save_messages(db: Session, conv_id: int, question: str, answer: str, user_id: int):
-    """保存消息到数据库"""
-    if conv_id and conv_id > 0:
-        conv = conv_crud.get_conversation(db, conv_id, user_id)
-        if conv:
-            msg_crud.create_message(db, conv_id, "user", question)
-            msg_crud.create_message(db, conv_id, "assistant", answer)
-            if not conv.title or conv.title == "新对话" or len(conv.title) < 2:
-                conv.title = question[:30]
-            db.commit()
+async def _save_messages(conv_id: int, question: str, answer: str, user_id: int, tenant_id: int | None):
+    """异步保存消息到数据库"""
+    if conv_id <= 0:
+        return
+    async with AsyncSessionLocal() as db:
+        await create_message(db, conv_id, "user", question)
+        await create_message(db, conv_id, "assistant", answer)
+        conv = await get_conversation(db, conv_id, user_id)
+        if conv and (not conv.title or conv.title == _DEFAULT_TITLE or len(conv.title) < 2):
+            await update_conversation_title(db, conv_id, question[:30], user_id)
+
+
+def _infer_task_type(state: AgentState) -> str:
+    """从 state 推断任务类型（用于日志）"""
+    route = state.get("route_history", [])
+    if route:
+        return "graph:" + "+".join(route)
+    return "direct"
 
 
 @router.post("/send", response_model=ChatResponse)
-def chat_send(
+async def chat_send(
     req: ChatRequest,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _tenant_ok: User = Depends(require_tenant_access),
 ):
-    """用户发送消息 → 处理 → 返回结果
+    """用户发送消息 → 统一循环图处理 → 返回结果"""
+    question = req.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="消息不能为空")
 
-    流程：
-      1. FastRouter 规则匹配（零 LLM 调用）
-         - 命中且 is_final: Tool → Formatter → 返回（~0.2~1s）
-         - 命中且 !is_final: Tool → LLM → 返回（~2~4s）
-      2. 未命中: Planner → ToolRouter(规则优先) → Tool → LLM → 返回（~3~8s）
-    """
-    # 加载历史消息
-    history = _load_history(db, req.conversation_id, current_user.id)
+    # ========== FastRouter 旁路：零 LLM 调用处理简单请求 ==========
+    _fast_router = FastRouter()
+    _match = _fast_router.route(question)
+    if _match and _match.is_final:
+        register_default_tools()
+        _manager = get_tool_manager()
+        _result = await _manager.aexecute(_match.tool_name, **_match.tool_args)
+        _fast_response = format_tool_result(_result, _match.tool_name)
+        response_data = {
+            "question": question,
+            "task_type": "fast_router",
+            "final_answer": _fast_response,
+        }
+        asyncio.create_task(async_log_chat_question(
+            user_id=current_user.id, question=question,
+            task_type="fast_router", is_stream=False,
+            conversation_id=req.conversation_id or None,
+            elapsed_ms=0, answer=_fast_response,
+        ))
+        await _save_messages(
+            req.conversation_id, question, _fast_response,
+            current_user.id, current_user.tenant_id,
+        )
+        return ChatResponse(**response_data)
+
+    history_messages = await _load_history_messages(req.conversation_id, current_user.id)
     start = time.time()
     elapsed_ms = 0
 
     try:
-        # ========== 1. FastRouter 快速匹配 ==========
-        match = _fast_router.route(req.question)
+        # 构建新格式 state：使用 LangChain 消息
+        state = AgentState(
+            messages=[*history_messages, HumanMessage(content=question)],
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            next_agent="",
+            route_history=[],
+            step_count=0,
+            last_worker="",
+        )
 
-        if match is not None:
-            # 命中 FastRouter → 直接执行工具
-            tool_manager = get_tool_manager()
-            tool_result = tool_manager.execute(match.tool_name, **match.tool_args)
+        result = await agent_graph.ainvoke(state)
 
-            if match.is_final and tool_result.success:
-                # ✅ 快速路径：工具结果就是最终答案 → Formatter 直接返回
-                # 跳过 Planner、ToolRouter(LLM)、LLM 回答 的全流程
-                answer = _formatter.format(match.tool_name, tool_result)
-                task_type = f"fast:{match.rule_name}"
-                elapsed_ms = int((time.time() - start) * 1000)
-                logger.info(
-                    f"FastRouter 快速路径: [{match.rule_name}] "
-                    f"耗时 {elapsed_ms}ms"
-                )
+        elapsed_ms = int((time.time() - start) * 1000)
 
-                result = {
-                    "question": req.question,
-                    "task_type": task_type,
-                    "final_answer": answer,
-                }
-
-            elif tool_result.success:
-                # ⚠️ 需要 LLM 进一步处理（如分析、总结）
-                # 构建带工具结果的提示词，跳过图直接调 LLM
-                tool_state: AgentState = {
-                    "question": req.question,
-                    "history": history[-10:],
-                    "user_id": current_user.id,
-                    "task_type": "tool",
-                    "tool_result": tool_result.to_message(),
-                    "tool_results": [tool_result.to_dict()],
-                    "tool_calls": [{
-                        "tool_name": match.tool_name,
-                        "arguments": match.tool_args,
-                        "result": tool_result.to_dict(),
-                        "success": tool_result.success,
-                        "error": tool_result.error,
-                        "execution_time_ms": tool_result.execution_time_ms,
-                    }],
-                }
-                prompt = build_prompt(tool_state)
-                answer = call_llm(SYSTEM_PROMPT, prompt, history=history[-10:])
-                elapsed_ms = int((time.time() - start) * 1000)
-
-                result = {
-                    "question": req.question,
-                    "task_type": f"fast:{match.rule_name}",
-                    "final_answer": answer,
-                }
-
-            else:
-                # 工具执行失败 → 友好降级
-                # 为天气工具提供更快的降级响应（避免调 LLM）
-                if match.tool_name == "weather":
-                    answer = f"❌ 暂时无法获取 {match.tool_args.get('city', '')} 的天气信息，请稍后再试。"
-                else:
-                    fallback_state: AgentState = {
-                        "question": req.question,
-                        "history": history[-10:],
-                        "user_id": current_user.id,
-                        "task_type": "direct",
-                    }
-                    prompt = build_prompt(fallback_state)
-                    answer = call_llm(SYSTEM_PROMPT, prompt, history=history[-10:])
-                elapsed_ms = int((time.time() - start) * 1000)
-
-                result = {
-                    "question": req.question,
-                    "task_type": f"fast:{match.rule_name}_fallback",
-                    "final_answer": answer,
-                }
-
+        # 从 messages 中提取最后一条 AI 消息作为最终回答
+        last_msg = result["messages"][-1]
+        if isinstance(last_msg, AIMessage):
+            final_answer = last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content)
         else:
-            # ========== 2. FastRouter 未命中 → 走完整 Agent 流程 ==========
-            state: AgentState = {
-                "question": req.question,
-                "history": history[-10:],
-                "user_id": current_user.id,
-            }
+            final_answer = str(last_msg.content) if hasattr(last_msg, "content") else str(last_msg)
 
-            # 2a. LangGraph Workflow：planner → (rag/tool) → prompt_builder
-            state = agent_graph.invoke(state)
+        task_type = _infer_task_type(result)
 
-            # 2b. LLM 调用
-            tool_manager = get_tool_manager()
-            tool_schemas = tool_manager.get_function_schemas() if not tool_manager.is_empty() else None
+        if not final_answer:
+            logger.warning(f"Graph 未产出 final_answer, question={question[:50]}")
+            final_answer = "抱歉，我暂时无法回答这个问题。"
 
-            answer = call_llm(
-                SYSTEM_PROMPT,
-                state["prompt"],
-                history=history[-10:],
-                tools=tool_schemas,
-            )
-
-            elapsed_ms = int((time.time() - start) * 1000)
-
-            result = {
-                "question": req.question,
-                "task_type": state.get("task_type", "direct"),
-                "final_answer": answer,
-            }
+        response_data = {
+            "question": question,
+            "task_type": task_type,
+            "final_answer": final_answer,
+        }
 
     except Exception as e:
         elapsed_ms = int((time.time() - start) * 1000)
-        logger.error(f"chat_send 异常: {str(e)}", exc_info=True)
-        result = {
-            "question": req.question,
+        logger.error(f"chat_send 异常: {e}", exc_info=True)
+        response_data = {
+            "question": question,
             "task_type": "error",
             "final_answer": f"系统错误：{str(e)}",
         }
 
-    # === 记录操作日志 ===
-    OperationLogger.log_chat_question(
-        db,
+    # Fire-and-forget 操作日志
+    asyncio.create_task(async_log_chat_question(
         user_id=current_user.id,
-        question=req.question,
-        task_type=result.get("task_type", "unknown"),
+        question=question,
+        task_type=response_data.get("task_type", "unknown"),
         is_stream=False,
         conversation_id=req.conversation_id or None,
         elapsed_ms=elapsed_ms,
-        answer=result.get("final_answer", ""),
+        answer=response_data.get("final_answer", ""),
+    ))
+
+    await _save_messages(
+        req.conversation_id, question,
+        response_data.get("final_answer", ""),
+        current_user.id, current_user.tenant_id,
     )
 
-    # 保存消息到数据库
-    if req.conversation_id and req.conversation_id > 0:
-        _save_messages(
-            db, req.conversation_id, req.question,
-            result.get("final_answer", ""), current_user.id,
-        )
-
-    return ChatResponse(
-        question=result["question"],
-        task_type=result.get("task_type", "unknown"),
-        final_answer=result.get("final_answer", "抱歉，我无法回答这个问题"),
-    )
-
-
-@router.post("/send-with-trace")
-def chat_send_with_trace(
-    req: ChatRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    用户发送消息 → Agent 处理 → 返回结果（不含追踪）
-    （该端点沿用 /send 的实现，如需调试信息请查看服务端日志）
-    """
-    # 复用同一个处理逻辑
-    from fastapi.responses import JSONResponse
-
-    start = time.time()
-    history = _load_history(db, req.conversation_id, current_user.id)
-
-    try:
-        # FastRouter 快速匹配
-        match = _fast_router.route(req.question)
-
-        if match is not None:
-            tool_manager = get_tool_manager()
-            tool_result = tool_manager.execute(match.tool_name, **match.tool_args)
-
-            if match.is_final and tool_result.success:
-                answer = _formatter.format(match.tool_name, tool_result)
-                task_type = f"fast:{match.rule_name}"
-            elif tool_result.success:
-                tool_state: AgentState = {
-                    "question": req.question,
-                    "history": history[-10:],
-                    "user_id": current_user.id,
-                    "task_type": "tool",
-                    "tool_result": tool_result.to_message(),
-                    "tool_results": [tool_result.to_dict()],
-                    "tool_calls": [{
-                        "tool_name": match.tool_name,
-                        "arguments": match.tool_args,
-                        "result": tool_result.to_dict(),
-                        "success": tool_result.success,
-                        "error": tool_result.error,
-                        "execution_time_ms": tool_result.execution_time_ms,
-                    }],
-                }
-                prompt = build_prompt(tool_state)
-                answer = call_llm(SYSTEM_PROMPT, prompt, history=history[-10:])
-                task_type = f"fast:{match.rule_name}"
-            else:
-                # 天气工具快速降级，不调 LLM
-                if match.tool_name == "weather":
-                    answer = f"❌ 暂时无法获取 {match.tool_args.get('city', '')} 的天气信息，请稍后再试。"
-                else:
-                    fallback_state: AgentState = {
-                        "question": req.question,
-                        "history": history[-10:],
-                        "user_id": current_user.id,
-                        "task_type": "direct",
-                    }
-                    prompt = build_prompt(fallback_state)
-                    answer = call_llm(SYSTEM_PROMPT, prompt, history=history[-10:])
-                task_type = f"fast:{match.rule_name}_fallback"
-
-            elapsed_ms = int((time.time() - start) * 1000)
-
-            result = {
-                "question": req.question,
-                "task_type": task_type,
-                "final_answer": answer,
-            }
-        else:
-            state: AgentState = {
-                "question": req.question,
-                "history": history[-10:],
-                "user_id": current_user.id,
-            }
-            state = agent_graph.invoke(state)
-
-            tool_manager = get_tool_manager()
-            tool_schemas = tool_manager.get_function_schemas() if not tool_manager.is_empty() else None
-            answer = call_llm(
-                SYSTEM_PROMPT, state["prompt"],
-                history=history[-10:], tools=tool_schemas,
-            )
-            elapsed_ms = int((time.time() - start) * 1000)
-
-            result = {
-                "question": req.question,
-                "task_type": state.get("task_type", "direct"),
-                "final_answer": answer,
-            }
-
-    except Exception as e:
-        elapsed_ms = int((time.time() - start) * 1000)
-        result = {
-            "question": req.question,
-            "task_type": "error",
-            "final_answer": f"系统错误：{str(e)}",
-        }
-
-    # 记录操作日志
-    OperationLogger.log_chat_question(
-        db,
-        user_id=current_user.id,
-        question=req.question,
-        task_type=result.get("task_type", "unknown"),
-        is_stream=False,
-        conversation_id=req.conversation_id or None,
-        elapsed_ms=elapsed_ms,
-        answer=result.get("final_answer", ""),
-    )
-
-    # 保存消息
-    if req.conversation_id and req.conversation_id > 0:
-        _save_messages(
-            db, req.conversation_id, req.question,
-            result.get("final_answer", ""), current_user.id,
-        )
-
-    return {
-        "response": ChatResponse(
-            question=result["question"],
-            task_type=result.get("task_type", "unknown"),
-            final_answer=result.get("final_answer", ""),
-        ),
-    }
+    return ChatResponse(**response_data)

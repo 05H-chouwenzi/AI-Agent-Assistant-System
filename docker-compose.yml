@@ -52,6 +52,30 @@ services:
     networks:
       - ai-assistant-net
 
+  # ---- pgvector 向量数据库（可选，替代 FAISS）----
+  # 启用方法：在 .env 中设置 VECTOR_STORE_PROVIDER=pgvector
+  pgvector-db:
+    image: pgvector/pgvector:0.8.0-pg17
+    container_name: ai-assistant-pgvector
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pgvector
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:-changeme}
+      POSTGRES_DB: ai_assistant
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pgvector"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - pgvector
+    networks:
+      - ai-assistant-net
+
   # ---- 前端 + Nginx ----
   frontend:
     build:
@@ -69,6 +93,8 @@ services:
 volumes:
   mysql_data:
     name: ai-assistant-mysql-data
+  pgvector_data:
+    name: ai-assistant-pgvector-data
 
 networks:
   ai-assistant-net:

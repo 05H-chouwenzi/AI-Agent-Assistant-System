@@ -71,17 +71,32 @@ def get_token_stats(db: Session, user_id: int) -> dict:
 def get_recent_conversations_with_last_message(
     db: Session, user_id: int, limit: int = 5
 ) -> list[dict]:
-    """获取最近 N 条活跃会话及最后消息 —— 一次查询解决 N+1"""
+    """获取最近 N 条活跃会话及最后消息（MySQL 兼容版）"""
 
-    # 子查询：每个会话的最后一条消息
+    # 子查询：每个会话的最后一条消息的创建时间
+    last_time_sub = (
+        db.query(
+            Message.conversation_id,
+            func.max(Message.created_at).label("max_time"),
+        )
+        .group_by(Message.conversation_id)
+        .subquery()
+    )
+
+    # 根据会话 + 时间匹配出最后的消息内容
     last_msg_sub = (
         db.query(
             Message.conversation_id,
-            Message.content.label("last_content"),
-            Message.created_at.label("last_time"),
+            Message.content,
+            Message.created_at,
         )
-        .distinct(Message.conversation_id)
-        .order_by(Message.conversation_id, Message.created_at.desc())
+        .join(
+            last_time_sub,
+            db.and_(
+                Message.conversation_id == last_time_sub.c.conversation_id,
+                Message.created_at == last_time_sub.c.max_time,
+            ),
+        )
         .subquery()
     )
 
@@ -89,8 +104,8 @@ def get_recent_conversations_with_last_message(
         db.query(
             Conversation.id,
             Conversation.title,
-            last_msg_sub.c.last_content,
-            last_msg_sub.c.last_time,
+            last_msg_sub.c.content,
+            last_msg_sub.c.created_at,
         )
         .outerjoin(last_msg_sub, Conversation.id == last_msg_sub.c.conversation_id)
         .filter(
@@ -106,10 +121,10 @@ def get_recent_conversations_with_last_message(
         {
             "id": row.id,
             "title": row.title,
-            "last_message": (row.last_content[:120] if row.last_content else ""),
+            "last_message": (row.content[:120] if row.content else ""),
             "last_time": (
-                row.last_time.strftime("%Y-%m-%d %H:%M")
-                if row.last_time else ""
+                row.created_at.strftime("%Y-%m-%d %H:%M")
+                if row.created_at else ""
             ),
         }
         for row in rows

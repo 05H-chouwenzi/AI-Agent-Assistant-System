@@ -1,143 +1,75 @@
+"""向量存储 —— 支持 FAISS（默认）和 pgvector（可选）两种后端
+
+    在 .env 中设置 VECTOR_STORE_PROVIDER 切换：
+      VECTOR_STORE_PROVIDER=faiss      （默认，使用本地 FAISS 索引文件）
+      VECTOR_STORE_PROVIDER=pgvector   （替换，使用 PostgreSQL + pgvector）
+
+    pgvector 模式需额外配置 PGVECTOR_DATABASE_URL。
 """
-向量存储 —— 全局共享 FAISS 索引（所有用户共用知识库）
-"""
-import pickle
-from pathlib import Path
-import faiss
-import numpy as np
+import logging
+from typing import Callable
 
-VECTOR_DIM = 1024
-BASE_DIR = Path(__file__).resolve().parent.parent / "data"
-BASE_DIR.mkdir(parents=True, exist_ok=True)
+from config.settings import VECTOR_STORE_PROVIDER
 
-_STORE_DIR = BASE_DIR / "vector_index_shared"
-_STORE_DIR.mkdir(parents=True, exist_ok=True)
+logger = logging.getLogger("agent")
+
+# 默认导出 FAISS 实现
+from rag.vector_store.faiss_store import (  # type: ignore
+    add_vectors as _faiss_add_vectors,
+    search as _faiss_search,
+    count as _faiss_count,
+    remove_by_source as _faiss_remove_by_source,
+    clear as _faiss_clear,
+)
+
+# ====== 根据配置选择后端 ======
+
+def _resolve_implementation():
+    """根据 VECTOR_STORE_PROVIDER 选择后端实现"""
+    if VECTOR_STORE_PROVIDER == "pgvector":
+        try:
+            from rag.vector_store.pgvector_store import (
+                add_vectors as _pg_add,
+                search as _pg_search,
+                count as _pg_count,
+                remove_by_source as _pg_remove,
+                clear as _pg_clear,
+                is_available,
+            )
+            if is_available():
+                logger.info("向量存储: 使用 pgvector 后端")
+                return _pg_add, _pg_search, _pg_count, _pg_remove, _pg_clear
+            else:
+                logger.warning("pgvector 不可用，回退到 FAISS")
+        except Exception as e:
+            logger.warning(f"pgvector 加载失败 ({e})，回退到 FAISS")
+    else:
+        logger.debug(f"向量存储: 使用 FAISS 后端 (VECTOR_STORE_PROVIDER={VECTOR_STORE_PROVIDER})")
+
+    return (_faiss_add_vectors, _faiss_search,
+            _faiss_count, _faiss_remove_by_source, _faiss_clear)
 
 
-def _get_index() -> faiss.IndexFlatIP:
-    index_file = _STORE_DIR / "index.faiss"
-    if index_file.exists():
-        return faiss.read_index(str(index_file))
-    return faiss.IndexFlatIP(VECTOR_DIM)
+_add_vectors, _search, _count, _remove_by_source, _clear = _resolve_implementation()
 
 
-def _save_index(index: faiss.IndexFlatIP):
-    index_file = _STORE_DIR / "index.faiss"
-    faiss.write_index(index, str(index_file))
-
-
-def _save_docs(docs: list[dict]):
-    doc_file = _STORE_DIR / "documents.pkl"
-    with open(doc_file, "wb") as f:
-        pickle.dump(docs, f)
-
-
-def _load_docs() -> list[dict]:
-    doc_file = _STORE_DIR / "documents.pkl"
-    if doc_file.exists():
-        with open(doc_file, "rb") as f:
-            return pickle.load(f)
-    return []
-
+# ====== 统一导出，接口与 FAISS 版完全一致 ======
 
 def add_vectors(vectors: list[list[float]], documents: list[dict]):
-    """
-    添加向量及对应文档到共享知识库
-
-    Args:
-        vectors: [[0.1, 0.2, ...], ...]
-        documents: [{"id": 1, "content": "...", "source": "..."}, ...]
-    """
-    if not documents:
-        return
-
-    index = _get_index()
-    arr = np.array(vectors, dtype=np.float32)
-    faiss.normalize_L2(arr)
-    index.add(arr)
-    _save_index(index)
-
-    docs = _load_docs()
-    docs.extend(documents)
-    _save_docs(docs)
+    return _add_vectors(vectors, documents)
 
 
 def search(query_vec: list[float], top_k: int = 5) -> list[dict]:
-    """
-    从共享知识库检索最相似的 top_k 个文档
-
-    Args:
-        query_vec: 查询向量
-        top_k: 返回文档数
-
-    Returns:
-        [{"score": 0.95, "id": 0, "content": "...", "source": "..."}, ...]
-    """
-    index = _get_index()
-    if index.ntotal == 0:
-        return []
-
-    arr = np.array([query_vec], dtype=np.float32)
-    faiss.normalize_L2(arr)
-    scores, indices = index.search(arr, top_k)
-
-    docs = _load_docs()
-    results = []
-    for score, idx in zip(scores[0], indices[0]):
-        if idx == -1:
-            continue
-        doc = docs[idx]
-        results.append({"score": round(float(score), 4), **doc})
-
-    return results
+    return _search(query_vec, top_k=top_k)
 
 
 def count() -> int:
-    """共享索引中的文档总数"""
-    return _get_index().ntotal
+    return _count()
 
 
 def remove_by_source(source: str) -> int:
-    """
-    按 source（文件名）删除文档的所有向量块
-    """
-    index = _get_index()
-    ntotal = index.ntotal
-    if ntotal == 0:
-        return 0
-
-    docs = _load_docs()
-    if not docs:
-        return 0
-
-    all_vectors = np.zeros((ntotal, VECTOR_DIM), dtype=np.float32)
-    for i in range(ntotal):
-        all_vectors[i] = index.reconstruct(i)
-
-    keep_mask = np.ones(ntotal, dtype=bool)
-    for i, doc in enumerate(docs):
-        if doc.get("source") == source:
-            keep_mask[i] = False
-
-    removed = int((~keep_mask).sum())
-    if removed == 0:
-        return 0
-
-    new_index = faiss.IndexFlatIP(VECTOR_DIM)
-    kept_vectors = all_vectors[keep_mask]
-    if len(kept_vectors) > 0:
-        faiss.normalize_L2(kept_vectors)
-        new_index.add(kept_vectors)
-    _save_index(new_index)
-
-    kept_docs = [doc for i, doc in enumerate(docs) if keep_mask[i]]
-    _save_docs(kept_docs)
-
-    return removed
+    return _remove_by_source(source)
 
 
 def clear():
-    """清空共享索引"""
-    import shutil as _su
-    _su.rmtree(_STORE_DIR, ignore_errors=True)
-    _STORE_DIR.mkdir(parents=True, exist_ok=True)
+    return _clear()

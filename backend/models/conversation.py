@@ -2,7 +2,7 @@
 对话模型 —— 一次完整的用户对话会话
 """
 
-from sqlalchemy import Column,String,Text
+from sqlalchemy import Column, Integer, String, Text
 from sqlalchemy.orm import Mapped,mapped_column,relationship
 
 from .base import Base,TimestampMixin
@@ -23,6 +23,7 @@ class Conversation(Base,TimestampMixin):
         String(200),default="新对话",comment="对话标题"
     )
     user_id: Mapped[int]=mapped_column(comment="所属用户ID")
+    tenant_id: Mapped[int] = mapped_column(Integer, nullable=True, default=None, comment="所属租户ID")
     status:Mapped[str]=mapped_column(
         String(20),default="active",comment="状态:active/archived"
     )
