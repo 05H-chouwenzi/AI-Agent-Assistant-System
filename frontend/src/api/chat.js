@@ -61,3 +61,10 @@ export async function changePassword(data) {
   const res = await api.put("/api/users/password", data);
   return res.data;
 }
+
+
+/** 重命名对话 */
+export async function renameConversation(id, title) {
+  const res = await api.put(`/api/conversations/${id}/rename`, { title });
+  return res.data;
+}

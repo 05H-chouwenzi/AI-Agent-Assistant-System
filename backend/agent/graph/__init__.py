@@ -5,6 +5,7 @@ from agent.graph.nodes import (
     research_node,
     data_node,
     general_node,
+    synthesize_node,
 )
 from agent.graph.router import (
     route_from_supervisor,
@@ -19,6 +20,7 @@ __all__ = [
     "research_node",
     "data_node",
     "general_node",
+    "synthesize_node",
     "route_from_supervisor",
     "route_after_worker",
     "AGENT_LABELS",

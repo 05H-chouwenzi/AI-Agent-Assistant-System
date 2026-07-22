@@ -1,5 +1,5 @@
-/* ============================================
-   Enterprise AI Assistant — 全局样式
+﻿/* ============================================
+   Enterprise AI Assistant 鈥?鍏ㄥ眬鏍峰紡
    ============================================ */
 
 :root {
@@ -31,20 +31,20 @@ body {
 #root { height: 100vh; width: 100%; }
 .text-muted { color: var(--text-muted); }
 
-/* ============ 布局外壳 ============ */
+/* ============ 甯冨眬澶栧３ ============ */
 .app-layout { display: flex; height: 100vh; }
 .app-content { flex: 1; display: flex; flex-direction: column; }
 .app-content.chat-content { overflow: hidden; }
 .chat-page { display: flex; height: 100vh; }
 
-/* ============ 通用页面布局 ============ */
+/* ============ 閫氱敤椤甸潰甯冨眬 ============ */
 .page-layout { display: flex; flex-direction: column; flex: 1; padding: 32px 32px 24px; overflow-y: auto; overflow-x: hidden; }
 .dashboard-container { width: 100%; max-width: 1400px; margin: 0 auto; }
 .page-header { margin-bottom: 24px; }
 .page-header h2 { font-size: 20px; font-weight: 600; }
 .page-body { flex: 1; }
 
-/* ============ 主侧边栏 ============ */
+/* ============ 涓讳晶杈规爮 ============ */
 .app-sidebar { width: 240px; background: var(--sidebar-bg); display: flex; flex-direction: column; flex-shrink: 0; color: #d1d5db; user-select: none; transition: width .2s; }
 .app-sidebar-header { padding: 16px; display: flex; align-items: center; justify-content: space-between; }
 .app-sidebar-logo { font-size: 14px; font-weight: 700; color: #f9fafb; letter-spacing: .5px; }
@@ -58,7 +58,7 @@ body {
 .nav-icon { display: flex; align-items: center; justify-content: center; width: 20px; height: 18px; flex-shrink: 0; }
 .nav-label { font-size: 14px; }
 
-/* ============ AI 助手导航项操作按钮 ============ */
+/* ============ AI 鍔╂墜瀵艰埅椤规搷浣滄寜閽?============ */
 .nav-add-btn { width: 22px; height: 22px; border-radius: 6px; font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: inherit; opacity: 0; transition: all .15s; }
 .nav-popover-btn { width: 22px; height: 22px; border-radius: 6px; font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: inherit; opacity: 0; transition: all .15s; }
 .nav-btn-group { margin-left: auto; display: flex; align-items: center; gap: 2px; }
@@ -68,7 +68,7 @@ body {
 .nav-label.nav-chat-label { cursor: pointer; }
 .app-sidebar.collapsed .nav-add-btn, .app-sidebar.collapsed .nav-popover-btn { display: none; }
 
-/* ============ 对话浮窗（无边框，背景与侧边栏一致） ============ */
+/* ============ 瀵硅瘽娴獥锛堟棤杈规锛岃儗鏅笌渚ц竟鏍忎竴鑷达級 ============ */
 .chat-popover { max-height: 0; overflow: hidden; transition: max-height .25s ease; position: absolute; left: 0; right: 0; top: 100%; margin-top: 2px; background: var(--sidebar-bg); border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,.3); z-index: 1000; display: flex; flex-direction: column; }
 .chat-popover.open { max-height: 340px; }
 .chat-popover-header { padding: 10px 14px; font-size: 12px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: .5px; flex-shrink: 0; }
@@ -81,7 +81,15 @@ body {
 .chat-popover-item:hover .chat-popover-delete { opacity: 0.8; }
 .chat-popover-delete:hover { opacity: 1 !important; background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 
-/* ============ 侧边栏底部 ============ */
+.chat-popover-actions { flex-shrink: 0; display: flex; align-items: center; gap: 2px; }
+.chat-popover-rename { flex-shrink: 0; width: 24px; height: 24px; border-radius: 4px; border: none; background: none; color: #9ca3af; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.5; transition: all 0.15s; }
+.chat-popover-item:hover .chat-popover-rename { opacity: 0.8; }
+.chat-popover-rename:hover { opacity: 1 !important; background: rgba(96, 165, 250, 0.15); color: #60a5fa; }
+.chat-popover-rename-input { flex: 1; min-width: 0; background: rgba(255,255,255,0.08); border: 1px solid rgba(96,165,250,0.4); border-radius: 4px; padding: 2px 6px; font-size: 13px; color: #e5e7eb; outline: none; }
+.chat-popover-rename-input:focus { border-color: #60a5fa; }
+
+
+/* ============ 渚ц竟鏍忓簳閮?============ */
 .app-sidebar.collapsed { width: 64px; }
 .app-sidebar.collapsed .app-sidebar-logo, .app-sidebar.collapsed .nav-label, .app-sidebar.collapsed .sidebar-user span, .app-sidebar.collapsed .sidebar-user .user-arrow { display: none; }
 .app-sidebar.collapsed .sidebar-logout-btn span { display: none; }
@@ -104,7 +112,7 @@ body {
   max-height: 80px;
 }
 
-/* ============ 聊天页 ============ */
+/* ============ 鑱婂ぉ椤?============ */
 .chat-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; border-bottom: 1px solid var(--border); height: 52px; flex-shrink: 0; }
 .chat-header-left { display: flex; align-items: center; gap: 8px; }
 .chat-header-left h2 { font-size: 15px; font-weight: 600; }
@@ -114,12 +122,12 @@ body {
 .sidebar-toggle-btn { display: none; }
 .chat-main { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); height: 100vh; }
 
-/* ============ 消息区 ============ */
+/* ============ 娑堟伅鍖?============ */
 .chat-messages { flex: 1; overflow-y: auto; padding-bottom: 24px; }
 .chat-messages::-webkit-scrollbar { width: 6px; }
 .chat-messages::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 10px; }
 
-/* ============ 欢迎页 ============ */
+/* ============ 娆㈣繋椤?============ */
 .welcome { display: flex; flex-direction: column; align-items: center; padding: 60px 20px 30px; max-width: 600px; margin: 0 auto; text-align: center; }
 .welcome-icon { width: 48px; height: 48px; border-radius: 10px; background: var(--sidebar-bg); display: flex; align-items: center; justify-content: center; color: #fff; margin-bottom: 16px; }
 .welcome h3 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
@@ -137,10 +145,12 @@ body {
 .workbench-arrow { flex-shrink: 0; color: var(--text-muted); opacity: 0; transition: opacity .15s, transform .15s; transform: translateX(-4px); }
 .workbench-card:hover .workbench-arrow { opacity: 1; transform: translateX(0); }
 
-/* ============ 消息气泡 ============ */
-.message { display: flex; padding: 20px 24px; gap: 16px; }
+/* ============ 娑堟伅姘旀场 ============ */
+.message { display: flex; padding: 20px 24px; gap: 16px; max-width: 1040px; margin: 0 auto; }
 .message-avatar { width: 30px; height: 30px; border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; }
 .message-user .message-avatar { background: var(--sidebar-bg); color: #fff; }
+ .message-user { flex-direction: row-reverse; }
+ .message-user .message-content { flex: 0 1 auto; max-width: calc(100% - 46px); min-width: 0; text-align: right; }
 .message-ai .message-avatar { background: var(--green); color: #fff; }
 .message-content { flex: 1; min-width: 0; padding-top: 4px; }
 .message-bubble { font-size: 15px; line-height: 1.75; color: var(--text); }
@@ -150,7 +160,7 @@ body {
 .typing .dot:nth-child(2) { animation-delay: .2s; }
 .typing .dot:nth-child(3) { animation-delay: .4s; }
 
-/* ============ AI 思考状态（流失加载提示） ============ */
+/* ============ AI 鎬濊€冪姸鎬侊紙娴佸け鍔犺浇鎻愮ず锛?============ */
 .thinking-status {
   display: flex;
   align-items: center;
@@ -185,11 +195,12 @@ body {
 }
 @keyframes bounce { 0%,60%,100% { opacity: .3; } 30% { opacity: 1; } }
 
-/* ============ 输入区 ============ */
-.chat-input-area { padding: 0 24px 24px; flex-shrink: 0; }
+/* ============ 杈撳叆鍖?============ */
+ .chat-input-area { padding: 0 24px 24px; flex-shrink: 0; max-width: 1040px; margin: 0 auto; }
+ .chat-input-area .input-wrapper { max-width: calc(180em + 62px); margin: 0 auto; }
 .input-wrapper { display: flex; align-items: flex-end; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 8px 8px 8px 18px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.04); transition: border-color .15s, box-shadow .15s; }
 .input-wrapper:focus-within { border-color: #000; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
-.input-wrapper textarea { flex: 1; border: none; resize: none; outline: none; font: inherit; font-size: 15px; line-height: 1.5; padding: 6px 0; max-height: 200px; background: transparent; }
+.input-wrapper textarea { flex: 1; border: none; resize: none; outline: none; font: inherit; font-size: 15px; line-height: 1.5; padding: 6px 0; max-height: 200px; background: transparent; min-width: 0; width: 100% }
 .input-wrapper textarea::placeholder { color: var(--text-muted); }
 .input-tools { display: flex; align-items: center; gap: 2px; }
 .input-tool-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 6px; border-radius: 6px; display: flex; align-items: center; font-size: 16px; transition: all .15s; }
@@ -221,7 +232,7 @@ body {
 .section-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 24px; margin: 0 20px; }
 .section-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
 
-/* ============ 文档列表 ============ */
+/* ============ 鏂囨。鍒楄〃 ============ */
 .doc-list { display: flex; flex-direction: column; gap: 8px; }
 .doc-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); transition: background .15s; }
 .doc-item:hover { background: #fafafa; }
@@ -398,7 +409,7 @@ body {
 .log-pagination button:disabled { opacity: .4; cursor: default; }
 .log-pagination span { font-size: 13px; color: var(--text-secondary); }
 
-/* ============ 登录页 ============ */
+/* ============ 鐧诲綍椤?============ */
 .login-page { display: flex; align-items: center; justify-content: center; height: 100vh; background: #f9f9f9; }
 .login-card { background: #fff; padding: 48px 40px; border-radius: 16px; width: 400px; max-width: 92%; border: 1px solid var(--border); box-shadow: 0 2px 16px rgba(0,0,0,.04); text-align: center; }
 .login-card h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
@@ -406,7 +417,7 @@ body {
 .login-card .input-group { margin-bottom: 14px; text-align: left; position: relative; }
 .login-card .input-group input { width: 100%; padding: 10px 40px 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; outline: none; transition: border-color .15s; }
 .login-card .input-group input:focus { border-color: #000; }
-/* 隐藏浏览器自带的密码眼睛图标（与自定义图标重复） */
+/* 闅愯棌娴忚鍣ㄨ嚜甯︾殑瀵嗙爜鐪肩潧鍥炬爣锛堜笌鑷畾涔夊浘鏍囬噸澶嶏級 */
 .login-card .input-group input[type="password"]::-ms-reveal,
 .login-card .input-group input[type="password"]::-ms-clear {
   display: none;
@@ -436,18 +447,18 @@ body {
 .profile-btn { padding: 10px 20px; background: var(--sidebar-bg); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 14px; cursor: pointer; width: fit-content; }
 .profile-btn:hover { background: #333; }
 
-/* ============ Dashboard 增强 ============ */
+/* ============ Dashboard 澧炲己 ============ */
 .page-subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
 .dashboard-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 80px; color: var(--text-muted); font-size: 14px; }
 .dashboard-loading .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .6s linear infinite; }
 
 .stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
-/* 双栏布局 */
+/* 鍙屾爮甯冨眬 */
 .dashboard-two-col { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; margin-bottom: 4px; }
 .dashboard-right-col { display: flex; flex-direction: column; gap: 20px; }
 
-/* 趋势图 */
+/* 瓒嬪娍鍥?*/
 .trend-charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .trend-chart-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 16px; }
 .trend-bars { display: flex; align-items: flex-end; justify-content: space-between; height: 140px; gap: 6px; padding: 0 4px; }
@@ -456,7 +467,7 @@ body {
 .trend-bar-value { font-size: 11px; font-weight: 700; color: var(--text); }
 .trend-bar-label { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
 
-/* 系统状态 */
+/* 绯荤粺鐘舵€?*/
 .system-status-grid { display: flex; flex-direction: column; gap: 10px; }
 .status-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .status-label { color: var(--text-muted); min-width: 70px; flex-shrink: 0; font-size: 12px; }
@@ -479,7 +490,7 @@ body {
 .status-log-item .log-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .status-log-item .log-time { font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
 
-/* 最近聊天增强 */
+/* 鏈€杩戣亰澶╁寮?*/
 .recent-conv-list { list-style: none; padding: 0; margin: 0; }
 .recent-conv-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; transition: all .15s; }
 .recent-conv-item:last-child { border-bottom: none; }
@@ -489,7 +500,7 @@ body {
 .recent-conv-msg { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent-conv-time { font-size: 11px; color: var(--text-muted); flex-shrink: 0; margin-left: 12px; }
 
-/* 快捷操作 */
+/* 蹇嵎鎿嶄綔 */
 .quick-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .quick-action-card { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; transition: all .18s; background: #fff; }
 .quick-action-card:hover { border-color: #000; box-shadow: 0 4px 16px rgba(0,0,0,.06); background: #fafafa; }
@@ -501,7 +512,7 @@ body {
 .quick-action-arrow { flex-shrink: 0; color: var(--text-muted); opacity: 0; transition: opacity .15s, transform .15s; transform: translateX(-4px); }
 .quick-action-card:hover .quick-action-arrow { opacity: 1; transform: translateX(0); }
 
-/* ============ 响应式 ============ */
+/* ============ 鍝嶅簲寮?============ */
 @media (max-width: 1024px) {
   .dashboard-two-col { grid-template-columns: 1fr; }
   .quick-actions { grid-template-columns: repeat(2, 1fr); }
@@ -517,8 +528,8 @@ body {
   .suggestions { grid-template-columns: 1fr; }
 }
 
-/* ============ 全局思考指示器 ============ */
-/* AI 在非聊天页面思考时的浮动提示条 */
+/* ============ 鍏ㄥ眬鎬濊€冩寚绀哄櫒 ============ */
+/* AI 鍦ㄩ潪鑱婂ぉ椤甸潰鎬濊€冩椂鐨勬诞鍔ㄦ彁绀烘潯 */
 .global-thinking-bar {
   position: fixed;
   bottom: 24px;
@@ -594,7 +605,7 @@ body {
   white-space: nowrap;
 }
 
-/* 侧边栏 AI 助手思考状态圆点 */
+/* 渚ц竟鏍?AI 鍔╂墜鎬濊€冪姸鎬佸渾鐐?*/
 .nav-thinking-badge {
   display: inline-flex;
   width: 8px;

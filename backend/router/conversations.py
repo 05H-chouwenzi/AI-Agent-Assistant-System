@@ -134,3 +134,27 @@ def get_conversation_messages(
         }
         for m in messages
     ]
+
+
+# ============ 重命名对话 ============
+@router.put("/{conv_id}/rename")
+def rename_conversation(
+    conv_id: int,
+    req: ConversationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    conv = conv_crud.rename_conversation(db, conv_id, current_user.id, req.title)
+    if not conv:
+        raise HTTPException(status_code=404, detail="对话不存在")
+
+    OperationLogger.log_conversation_event(
+        db,
+        action=Actions.CONVERSATION_UPDATE,
+        user_id=current_user.id,
+        conv_title=conv.title,
+        conv_id=conv_id,
+        detail={"new_title": req.title},
+    )
+
+    return {"message": "已重命名", "title": conv.title}

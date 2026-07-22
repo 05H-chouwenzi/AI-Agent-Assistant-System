@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getConversations, createConversation, deleteConversation } from "../api/chat";
+import { getConversations, createConversation, deleteConversation, renameConversation } from "../api/chat";
 import ConfirmDialog from "./ConfirmDialog";
 import { useChat } from "../contexts/ChatContext";
 
@@ -42,6 +42,8 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
   const [chatPop, setChatPop] = useState(false);
   const [convs, setConvs] = useState([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
   const chatNavRef = useRef();
   const { isThinking, thinkingStatus } = useChat();
 
@@ -82,6 +84,32 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
   }
   function handleCancelDelete() { setConfirmDeleteId(null); }
 
+  function handleRenameClick(e, conv) {
+    e.stopPropagation();
+    setRenamingId(conv.id);
+    setRenameValue(conv.title);
+  }
+
+  async function handleRenameSave() {
+    if (renamingId == null || !renameValue.trim()) return;
+    try {
+      await renameConversation(renamingId, renameValue.trim());
+      setConvs(p => p.map(c => c.id === renamingId ? { ...c, title: renameValue.trim() } : c));
+    } catch (e) { console.error(e); }
+    setRenamingId(null);
+    setRenameValue("");
+  }
+
+  function handleRenameCancel() {
+    setRenamingId(null);
+    setRenameValue("");
+  }
+
+  function handleRenameKeyDown(e) {
+    if (e.key === "Enter") { e.preventDefault(); handleRenameSave(); }
+    if (e.key === "Escape") { handleRenameCancel(); }
+  }
+
   const handleLogout = () => { localStorage.removeItem("token"); localStorage.removeItem("user"); navigate("/login"); };
   const isChat = location.pathname === "/chat";
 
@@ -116,12 +144,32 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
                     <div className="chat-popover-list">
                       {convs.map((c) => (
                         <div key={c.id} className="chat-popover-item" onClick={() => selectConversation(c.id)}>
-                          <span className="chat-popover-title">{c.title}</span>
-                          <button className="chat-popover-delete" onClick={(e) => handleDeleteClick(e, c.id)} title="删除对话">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            </svg>
-                          </button>
+                          {renamingId === c.id ? (
+                            <input
+                              className="chat-popover-rename-input"
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onKeyDown={handleRenameKeyDown}
+                              onBlur={handleRenameSave}
+                              autoFocus
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            <span className="chat-popover-title">{c.title}</span>
+                          )}
+                          <span className="chat-popover-actions">
+                            <button className="chat-popover-rename" onClick={(e) => handleRenameClick(e, c)} title="重命名">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </button>
+                            <button className="chat-popover-delete" onClick={(e) => handleDeleteClick(e, c.id)} title="删除对话">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          </span>
                         </div>
                       ))}
                       {confirmDeleteId != null && (

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 
 export default function ChatInput({ onSend, loading }) {
   const [text, setText] = useState("");
@@ -8,7 +8,10 @@ export default function ChatInput({ onSend, loading }) {
     if (!text.trim() || loading) return;
     onSend(text.trim());
     setText("");
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.overflowY = "hidden";
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -19,9 +22,17 @@ export default function ChatInput({ onSend, loading }) {
   };
 
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 150) + "px";
+    const ta = textareaRef.current;
+    if (!ta) return;
+
+    ta.style.height = "auto";
+
+    if (ta.scrollHeight > ta.clientHeight) {
+      const newHeight = Math.min(ta.scrollHeight, 200);
+      ta.style.height = newHeight + "px";
+      ta.style.overflowY = newHeight >= 200 ? "auto" : "hidden";
+    } else {
+      ta.style.overflowY = "hidden";
     }
   }, [text]);
 
@@ -35,10 +46,11 @@ export default function ChatInput({ onSend, loading }) {
           onKeyDown={handleKeyDown}
           placeholder="输入你的问题，Enter 发送，Shift+Enter 换行"
           rows={1}
+          cols={180}
           disabled={loading}
         />
         <button className="send-btn" onClick={handleSend} disabled={loading || !text.trim()} title="发送">
-          {loading ? <span className="spinner" /> : (
+          {loading ? <span className="spinner"></span> : (
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="22" y1="2" x2="11" y2="13" />
               <polygon points="22 2 15 22 11 13 2 9 22 2" />

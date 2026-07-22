@@ -23,6 +23,18 @@ from tools.tool_manager import get_tool_manager, register_default_tools
 from tools.formatter import format_tool_result
 from logs.operation_logger import async_log_chat_question
 from logs.logger import logger
+import re
+
+
+def _strip_md(text: str) -> str:
+    """Remove Markdown symbols from text"""
+    text = re.sub(r'\*+', '', text)
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\|', '', text)
+    text = re.sub(r'^>', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^-{3,}', '', text, flags=re.MULTILINE)
+    text = re.sub(r':', '', text)
+    return text
 
 router = APIRouter(prefix="/api/chat", tags=["聊天"])
 _DEFAULT_TITLE = "新对话"
@@ -93,10 +105,11 @@ async def chat_stream(
                     data = event.get("data")
                     chunk = data.get("chunk") if isinstance(data, dict) else None
                     if chunk and hasattr(chunk, "content") and chunk.content:
-                        if node == "supervisor":
-                            continue
-                        full_answer += chunk.content
-                        yield sse_event("chunk", chunk.content)
+                        # Worker token 直接流出，不再过滤（工作流已简化为 Worker→END，无多余 LLM 调用）
+                        cleaned = _strip_md(chunk.content)
+                        if cleaned:
+                            full_answer += cleaned
+                            yield sse_event("chunk", cleaned)
 
             # Fallback: 仅在流式 API 完全失败（零事件）时才走非流式
             # 正常情况即使回答为空也不会触发此分支，避免双重 LLM 调用

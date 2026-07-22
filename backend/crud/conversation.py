@@ -64,3 +64,13 @@ def count_user_conversations(db: Session, user_id: int) -> int:
         .filter(Conversation.user_id == user_id)
         .count()
     )
+
+
+def rename_conversation(db: Session, conv_id: int, user_id: int, new_title: str) -> Optional[Conversation]:
+    """重命名对话"""
+    conv = get_conversation(db, conv_id, user_id)
+    if not conv:
+        return None
+    conv.title = new_title
+    db.commit()
+    return conv

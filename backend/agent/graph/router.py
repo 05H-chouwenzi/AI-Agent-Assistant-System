@@ -1,11 +1,10 @@
 """LangGraph 路由：关键词评分 + LLM 决策解析
 
-完全匹配 ai-agent 架构。
-"""
+完全匹配 ai-agent 架构。"""
 import re
 from typing import Literal
 
-RouteTarget = Literal["research", "data", "general", "FINISH"]
+RouteTarget = Literal["research", "data", "general", "synthesize", "FINISH"]
 
 MAX_GRAPH_STEPS = 6
 
@@ -33,6 +32,7 @@ AGENT_LABELS = {
     "research": "Research Agent · 知识检索",
     "data": "Data Agent · 数据分析",
     "general": "General Agent · 通用助手",
+    "synthesize": "Synthesizer · 最终回答",
 }
 
 
@@ -42,7 +42,7 @@ def score_keywords(text: str, keywords: list[tuple[str, int]]) -> int:
 
 
 def heuristic_route(text: str, route_history: list[str]) -> RouteTarget:
-    """基于关键词评分的启发式路由，已执行过的 Agent 降权"""
+    """基于关键词评分的启发式路由，已执行过的Agent降权"""
     scores = {
         "research": score_keywords(text, RESEARCH_KEYWORDS),
         "data": score_keywords(text, DATA_KEYWORDS),
@@ -95,13 +95,13 @@ SUPERVISOR_PROMPT = """你是企业 AI Agent 平台的 Supervisor（任务调度
 - **research**：知识库检索、内部文档/政策/手册问答
 - **data**：数据库只读查询、Excel/表格分析
 - **general**：通用问答、天气等外部 API
-- **FINISH**：信息已足够，可以给出最终答复（无需再调用 Agent）
+- **FINISH**：信息已足够，可以给出最终答复（无需再调用Agent）
 
 ## 规则
-1. 分析用户最新问题，选择**一个**最合适的下一步
+1. 分析用户最新问题，选择一个最合适的下一步
 2. 若问题涉及多个领域，按优先级逐个调度（每次只选一个）
-3. 若 Worker 已返回结果且足以回答用户，选择 FINISH
-4. 简单寒暄、概念解释 → general；查文档 → research；查数/分析 → data
+3. 若Worker已返回结果且足以回答用户，选择 FINISH
+4. 简单寒暄、概念解释→general；查文档→research；查数/分析→data
 
 ## 输出格式
 **只输出一个单词**：research / data / general / FINISH
@@ -110,29 +110,41 @@ SUPERVISOR_PROMPT = """你是企业 AI Agent 平台的 Supervisor（任务调度
 WORKER_PROMPTS = {
     "research": (
         "你是 Research Agent，专注企业知识库检索与文档问答。\n"
-        "规则：优先调用 search_knowledge_base；引用来源；找不到时明确说明。"
+        "规则：优先调用 search_knowledge_base；引用来源；找不到时明确说明。\n格式：用普通文本，不要 Markdown 格式、# 标题、| 表格、** 粗体、--- 分隔线；直接用简洁段落"
     ),
     "data": (
         "你是 Data Agent，专注只读 SQL 与数据分析。\n"
-        "规则：优先调用工具获取真实数据；禁止编造数字；无法查询时说明原因。"
+        "规则：优先调用工具获取真实数据；禁止编造数字；无法查询时说明原因。\n格式：用普通文本，不要 Markdown 格式、# 标题、| 表格、** 粗体、--- 分隔线；直接用简洁段落"
     ),
     "general": (
         "你是 General Agent，处理通用问答与外部 API。\n"
-        "规则：简洁准确；需要实时信息时使用 get_weather 等工具。"
+        "规则：简洁准确；需要实时信息时使用 get_weather 等工具。\n格式：用普通文本，不要 Markdown 格式、# 标题、| 表格、** 粗体、--- 分隔线；直接用简洁段落"
     ),
 }
+
+SYNTHESIS_PROMPT = """你是企业 AI Agent 平台的最终回答合成器（Synthesizer）。
+根据对话中各 Worker Agent 的检索、分析结果，为用户生成完整、结构化的最终回答。
+要求：中文、专业、简洁、用普通文本；若有多个来源请整合；不要提及内部 Agent 名称。"""
 
 
 def route_from_supervisor(state) -> str:
     """Supervisor 路由选择"""
     nxt = state.get("next_agent", "general")
+    history = state.get("route_history", [])
     if nxt in ("FINISH", "finish"):
-        return "end"
-    if nxt in ("research", "data", "general"):
+        if not history:
+            return "general"
+        if len(history) <= 1:
+            return "end"
+        return "synthesize"
+    if nxt in ("research", "data", "general", "synthesize"):
         return nxt
     return "general"
 
 
 def route_after_worker(state) -> str:
-    """Worker 完成后直接结束（不走第二次 supervisor）"""
-    return "end"
+    """Worker 完成后回到 Supervisor 继续调度；达到步数上限则去 Synthesize"""
+    step = state.get("step_count", 0)
+    if step >= MAX_GRAPH_STEPS:
+        return "synthesize"
+    return "supervisor"
