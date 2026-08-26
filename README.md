@@ -13,25 +13,30 @@
 ```mermaid
 flowchart TD
     USER[用户输入] --> FastRouter
-    subgraph L1 [第一层: FastRouter]
-        FR[FastRouter - 规则匹配] -->|命中| Direct[直接执行工具]
-        FR -->|未命中| Graph
+   
+    subgraph L1 [Layer 1: FastRouter]
+        FR[FastRouter<br/>正则/关键词规则匹配<br/>零LLM调用 ~1ms] -->|命中| Direct[直接执行工具<br/>Weather/Calculator/<br/>Greeting/DateTime]
+        FR -->|未命中| L2
     end
-    subgraph L2 [第二层: LangGraph 循环图]
-        Supervisor[Supervisor - LLM 路由] -->|research| R[Research - 知识问答]
-        Supervisor -->|data| D[Data - SQL 与分析]
-        Supervisor -->|general| G[General - 通用对话]
-        Supervisor -->|FINISH| Check{是否需要合成?}
-        R --> Loop{步骤 < 6?}
+   
+    subgraph L2 [Layer 2: LangGraph 循环图]
+        Supervisor[Supervisor 节点<br/>LLM 路由 + 启发式兜底] -->|research| R[Research Worker<br/>知识库检索 Agent]
+        Supervisor -->|data| D[Data Worker<br/>SQL 数据分析 Agent]
+        Supervisor -->|general| G[General Worker<br/>通用问答 Agent]
+        Supervisor -->|FINISH| Check{需 Synthesize?}
+       
+        R --> Loop{steps < 6?}
         D --> Loop
         G --> Loop
         Loop -->|是| Supervisor
         Loop -->|否| Check
-        Check -->|1 个 Worker| END
-        Check -->|>=2 个 Worker| Syn[Synthesize - 聚合]
+        Check -->|1个 Worker| Final[最终回答]
+        Check -->|>=2 个 Worker| Syn[Synthesize Node<br/>聚合多 Worker 结果]
+        Syn --> Final
     end
-    Syn --> Final[最终回答]
-    END --> Final
+   
+    Direct --> UserOut[返回用户]
+    Final --> UserOut
 ```
 
 ### FastRouter
