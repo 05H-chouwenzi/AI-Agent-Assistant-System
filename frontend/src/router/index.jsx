@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
+import HomePage from "../pages/HomePage";
 import ChatPage from "../pages/ChatPage";
 import LoginPage from "../pages/LoginPage";
 import DashboardPage from "../pages/DashboardPage";
@@ -16,7 +17,7 @@ function ProtectedRoute({ children }) {
 
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
-  { path: "/", element: <ProtectedRoute><DashboardPage /></ProtectedRoute> },
+  { path: "/", element: <HomePage /> },
   { path: "/chat", element: <ProtectedRoute><ChatPage /></ProtectedRoute> },
   { path: "/dashboard", element: <ProtectedRoute><DashboardPage /></ProtectedRoute> },
   { path: "/knowledge", element: <ProtectedRoute><KnowledgePage /></ProtectedRoute> },
@@ -24,6 +25,7 @@ const router = createBrowserRouter([
   { path: "/logs", element: <ProtectedRoute><LogsPage /></ProtectedRoute> },
   { path: "/settings", element: <ProtectedRoute><SettingsPage /></ProtectedRoute> },
   { path: "/profile", element: <ProtectedRoute><ProfilePage /></ProtectedRoute> },
+  { path: "*", element: <Navigate to="/" replace /> },
 ]);
 
 export default router;

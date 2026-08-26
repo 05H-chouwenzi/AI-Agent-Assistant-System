@@ -1,0 +1,169 @@
+/* ============================================
+   会话侧边栏 —— 仿 Travel_AI_Agent 的 SessionSidebar 样式
+   ============================================ */
+.session-sidebar {
+  width: 260px;
+  height: 100%;
+  background: #18181b;
+  border-right: 1px solid #27272a;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  user-select: none;
+  animation: sessionSidebarIn 0.2s ease;
+}
+
+@keyframes sessionSidebarIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.session-sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid #3f3f46;
+}
+
+.session-new-btn {
+  width: 100%;
+  height: 38px;
+  border: none;
+  border-radius: 8px;
+  background: #1677ff;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.2s ease;
+}
+
+.session-new-btn:hover {
+  background: #4096ff;
+}
+
+.session-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+
+/* 滚动条：与侧边栏背景融合的柔和深色 */
+.session-sidebar-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.session-sidebar-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.session-sidebar-list::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+
+.session-sidebar-list::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+.session-sidebar-loading {
+  text-align: center;
+  padding: 24px 0;
+  color: #71717a;
+  font-size: 13px;
+}
+
+.session-sidebar-empty {
+  padding: 24px;
+  text-align: center;
+  color: #71717a;
+  font-size: 13px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  color: #fff;
+  transition: all 0.18s ease;
+  font-size: 14px;
+}
+
+.session-item:hover {
+  background: #27272a;
+}
+
+.session-item.active {
+  background: #27272a;
+  color: #fff;
+  font-weight: 500;
+}
+
+.session-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.session-item:hover .session-actions {
+  opacity: 1;
+}
+
+.session-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #a1a1aa;
+  padding: 3px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.session-action-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.session-action-btn.danger:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.session-edit-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.session-edit-input:focus {
+  border-color: #60a5fa;
+}

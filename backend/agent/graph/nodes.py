@@ -37,6 +37,10 @@ def _build_agents():
     global _agent_initialized, _agent_cache
     if _agent_initialized:
         return
+    # 确保工具已注册：否则 create_react_agent 会绑定空工具列表，
+    # 导致 Worker 无法调用工具、输出空回答
+    from tools.tool_manager import register_default_tools
+    register_default_tools()
     from langgraph.prebuilt import create_react_agent
     llm = get_llm(streaming=True)
     _agent_cache["research"] = create_react_agent(llm, get_research_tools())

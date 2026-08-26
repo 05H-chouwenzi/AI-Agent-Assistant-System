@@ -101,6 +101,7 @@ class FastRouter:
             ("calculator", self._match_calculator),
             ("weather",    self._match_weather),
             ("exchange",   self._match_exchange_rate),
+            ("knowledge_stats", self._match_knowledge_stats),
         ]
 
         for rule_name, matcher in rules:
@@ -209,5 +210,217 @@ class FastRouter:
 
         return None
 
-    # ────────────────── 问候 / 日期时间（零外部依赖）──────────────────
+    def _match_greeting(self, q: str) -> Optional[FastRouteMatch]:
+        """匹配问候语
 
+        只匹配纯打招呼场景（短输入，无其他意图）：
+          你好 / 您好 / 早上好 / 下午好 / 晚上好 / hi / hello
+        如果问候后面还跟别的话（如"你好，查天气"），不匹配。
+        """
+        q_clean = q.strip().lower()
+
+        pure_greetings = {
+            "你好", "您好", "你好呀", "您好呀",
+            "早上好", "下午好", "晚上好", "中午好",
+            "hi", "hello", "hey",
+        }
+        # 去掉标点符号后比较
+        q_stripped = re.sub(r'[，。！？、；：""''！@#￥%…&*（）【】,.\s]', '', q_clean)
+        if q_stripped in pure_greetings:
+            return FastRouteMatch(
+                tool_name="greeting",
+                tool_args={},
+                rule_name="greeting",
+                is_final=True,
+            )
+
+        return None
+
+    def _match_datetime(self, q: str) -> Optional[FastRouteMatch]:
+        """匹配日期/时间查询
+
+        匹配模式：
+          今天几号 / 今天星期几 / 现在几点 / 当前时间 / 什么日期
+        """
+
+        # 日期查询
+        if re.search(r'今天\s*几号', q) or re.search(r'(?:当前|现在)\s*日期', q) or re.match(r'^日期$', q):
+            return FastRouteMatch(
+                tool_name="datetime",
+                tool_args={"query_type": "date"},
+                rule_name="datetime",
+                is_final=True,
+            )
+
+        # 时间查询
+        if (re.search(r'现在\s*几点', q) or re.search(r'当前\s*时间', q)
+                or re.search(r'几点了', q) or re.match(r'^时间$', q)):
+            return FastRouteMatch(
+                tool_name="datetime",
+                tool_args={"query_type": "time"},
+                rule_name="datetime",
+                is_final=True,
+            )
+
+        # 星期查询
+        if (re.search(r'今天\s*星期[几天]', q) or re.search(r'今天\s*礼拜[几天]', q)
+                or re.match(r'^星期$', q) or re.match(r'^礼拜$', q)):
+            return FastRouteMatch(
+                tool_name="datetime",
+                tool_args={"query_type": "weekday"},
+                rule_name="datetime",
+                is_final=True,
+            )
+
+        # 兜底：包含"今天日期"、"今天时间"之类的混合查询
+        if re.search(r'今天.*(?:日期|时间)', q):
+            return FastRouteMatch(
+                tool_name="datetime",
+                tool_args={"query_type": "datetime"},
+                rule_name="datetime",
+                is_final=True,
+            )
+
+        return None
+
+    def _match_calculator(self, q: str) -> Optional[FastRouteMatch]:
+        """匹配数学计算
+
+        匹配模式：
+          计算 123+456
+          123+456
+          sqrt(64)
+          2*8+6/2
+          (1+2)*3
+        """
+        q_clean = q.strip()
+
+        # 模式0：表达式 + 等于/是多少（如 "123+456等于多少"、"2*8+6/2是多少"）
+        m = re.search(r'([\d+\-*/%.()\s²√πeE]+)\s*(?:等于多少|等于几|等于|是多少|得多少|结果为|是)', q_clean)
+        if m:
+            expr = m.group(1).strip()
+            expr = expr.replace('²', '**2').replace('√', 'sqrt ')
+            expr = expr.replace('×', '*').replace('÷', '/')
+            return FastRouteMatch(
+                tool_name="calculator",
+                tool_args={"expression": expr},
+                rule_name="calculator",
+                is_final=True,
+            )
+
+        # 模式1：以"计算"开头
+        m = re.search(r'(?:计算|算一下|帮我算)\s*([\d+\-*/%.()\s²√πeE]+)', q_clean)
+        if m:
+            expr = m.group(1).strip()
+            expr = expr.replace('²', '**2').replace('√', 'sqrt ')
+            expr = expr.replace('×', '*').replace('÷', '/')
+            return FastRouteMatch(
+                tool_name="calculator",
+                tool_args={"expression": expr},
+                rule_name="calculator",
+                is_final=True,
+            )
+
+        # 模式2：纯数学表达式（只含数字、运算符、括号、小数点）
+        pure_math = re.match(
+            r'^[\d+\-*/%.()\s²√πeEx10^]+$', q_clean, re.IGNORECASE
+        )
+        if pure_math and re.search(r'[\+\-\*/^]', q_clean):
+            expr = q_clean.strip()
+            expr = expr.replace('²', '**2').replace('√', 'sqrt ')
+            expr = expr.replace('×', '*').replace('÷', '/')
+            expr = expr.replace('^', '**')
+            return FastRouteMatch(
+                tool_name="calculator",
+                tool_args={"expression": expr},
+                rule_name="calculator",
+                is_final=True,
+            )
+
+        # 模式3：数学函数表达式 sqrt/sin/cos/tan/log
+        m = re.match(
+            r'^(sqrt|sin|cos|tan|log|ln|abs|pow|ceil|floor|round|max|min)\s*\('
+            r'[\d,.\s]+\s*\)$',
+            q_clean, re.IGNORECASE
+        )
+        if m:
+            return FastRouteMatch(
+                tool_name="calculator",
+                tool_args={"expression": q_clean},
+                rule_name="calculator",
+                is_final=True,
+            )
+
+        return None
+
+    def _match_exchange_rate(self, q: str) -> Optional[FastRouteMatch]:
+        """匹配汇率查询
+
+        匹配模式：
+          美元汇率 / 美金汇率 / 欧元汇率
+          美元兑人民币
+          查汇率
+        """
+        currencies = r'(?:美元|美金|欧元|英镑|日元|港币|韩元|泰铢|卢布|加元|澳元|新加坡元|人民币)'
+
+        # 模式1：单一货币汇率查询
+        if re.search(rf'^{currencies}?\s*(?:汇率|牌价)', q):
+            return FastRouteMatch(
+                tool_name="http",
+                tool_args={
+                    "url": "https://api.exchangerate-api.com/v4/latest/CNY",
+                    "method": "GET",
+                },
+                rule_name="exchange_rate",
+                is_final=True,
+            )
+
+        # 模式2：兑换查询
+        m = re.search(rf'({currencies})\s*(?:兑|对|换)\s*({currencies})', q)
+        if m:
+            return FastRouteMatch(
+                tool_name="http",
+                tool_args={
+                    "url": f"https://api.exchangerate-api.com/v4/latest/CNY",
+                    "method": "GET",
+                },
+                rule_name="exchange_rate",
+                is_final=True,
+            )
+
+        # 模式3：直接问"汇率"
+        if re.match(r'^查询?\s*(?:汇率|牌价|外汇)|[?？]?$', q):
+            return FastRouteMatch(
+                tool_name="http",
+                tool_args={
+                    "url": "https://api.exchangerate-api.com/v4/latest/CNY",
+                    "method": "GET",
+                },
+                rule_name="exchange_rate",
+                is_final=True,
+            )
+
+        return None
+
+
+    def _match_knowledge_stats(self, q: str) -> Optional[FastRouteMatch]:
+        """匹配知识库文件数量/清单查询（零 LLM 直接统计，避免走 Agent 图）
+
+        匹配模式：
+          我的公司知识库有几个文件 / 知识库里有多少文档
+          查一下公司知识库文件列表 / 知识库文档目录
+        """
+        patterns = [
+            r'(?:知识库|文档|文件|资料).{0,10}(?:几个|多少|几篇|几份|数量|总数|列表|清单|目录)',
+            r'(?:几个|多少|几篇|几份).{0,10}(?:知识库|文档|文件|资料)',
+            r'(?:有多少|共有多少|一共多少).{0,10}(?:知识库|文档|文件|资料)',
+        ]
+        for pat in patterns:
+            if re.search(pat, q):
+                return FastRouteMatch(
+                    tool_name="rag_search",
+                    tool_args={"query": q},
+                    rule_name="knowledge_stats",
+                    is_final=True,
+                )
+        return None

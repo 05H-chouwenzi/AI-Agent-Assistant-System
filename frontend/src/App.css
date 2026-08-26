@@ -1,11 +1,11 @@
-﻿/* ============================================
+/* ============================================
    Enterprise AI Assistant 鈥?鍏ㄥ眬鏍峰紡
    ============================================ */
 
 :root {
   --sidebar-bg: #111827;
-  --sidebar-hover: #1f2937;
-  --sidebar-active: #374151;
+  --sidebar-hover: #27272a;
+  --sidebar-active: #27272a;
   --bg: #ffffff;
   --chat-bg: #ffffff;
   --border: #e5e7eb;
@@ -45,48 +45,23 @@ body {
 .page-body { flex: 1; }
 
 /* ============ 涓讳晶杈规爮 ============ */
-.app-sidebar { width: 240px; background: var(--sidebar-bg); display: flex; flex-direction: column; flex-shrink: 0; color: #d1d5db; user-select: none; transition: width .2s; }
-.app-sidebar-header { padding: 16px; display: flex; align-items: center; justify-content: space-between; }
-.app-sidebar-logo { font-size: 14px; font-weight: 700; color: #f9fafb; letter-spacing: .5px; }
-.sidebar-toggle { background: none; border: 1px solid #374151; color: #9ca3af; cursor: pointer; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+.app-sidebar { width: 240px; background: #0f0f12; border-right: 1px solid #27272a; display: flex; flex-direction: column; flex-shrink: 0; color: #a1a1aa; user-select: none; transition: width .2s; }
+.app-sidebar-header { height: 71px; padding: 16px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #27272a; }
+.app-sidebar-logo { font-size: 14px; font-weight: 700; color: #fff; letter-spacing: .5px; display: flex; align-items: center; gap: 6px; }
+.app-sidebar-logo-icon { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #1677ff 0%, #0958d9 100%); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; line-height: 1; flex-shrink: 0; }
+.sidebar-toggle { background: none; border: 1px solid #27272a; color: #71717a; cursor: pointer; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
 .sidebar-toggle:hover { background: var(--sidebar-hover); color: #fff; }
 .app-nav { flex: 1; padding: 8px 8px; display: flex; flex-direction: column; gap: 2px; }
-.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all .15s; color: #d1d5db; }
-.nav-item:hover { background: var(--sidebar-hover); color: #f9fafb; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all .15s; color: #a1a1aa; }
+.nav-item:hover { background: var(--sidebar-hover); color: #fff; }
 .nav-item.active { background: var(--sidebar-active); color: #fff; font-weight: 500; }
-.nav-item.active:hover { background: var(--sidebar-hover); color: #f9fafb; }
+.nav-item.active:hover { background: var(--sidebar-hover); color: #fff; }
 .nav-icon { display: flex; align-items: center; justify-content: center; width: 20px; height: 18px; flex-shrink: 0; }
 .nav-label { font-size: 14px; }
 
-/* ============ AI 鍔╂墜瀵艰埅椤规搷浣滄寜閽?============ */
-.nav-add-btn { width: 22px; height: 22px; border-radius: 6px; font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: inherit; opacity: 0; transition: all .15s; }
-.nav-popover-btn { width: 22px; height: 22px; border-radius: 6px; font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: inherit; opacity: 0; transition: all .15s; }
-.nav-btn-group { margin-left: auto; display: flex; align-items: center; gap: 2px; }
-.nav-item:hover .nav-add-btn, .nav-item:hover .nav-popover-btn { opacity: .6; }
-.nav-add-btn:hover, .nav-popover-btn:hover { opacity: 1 !important; background: var(--sidebar-active); }
-.nav-popover-btn.open { opacity: .8; background: var(--sidebar-active); }
 .nav-label.nav-chat-label { cursor: pointer; }
-.app-sidebar.collapsed .nav-add-btn, .app-sidebar.collapsed .nav-popover-btn { display: none; }
 
 /* ============ 瀵硅瘽娴獥锛堟棤杈规锛岃儗鏅笌渚ц竟鏍忎竴鑷达級 ============ */
-.chat-popover { max-height: 0; overflow: hidden; transition: max-height .25s ease; position: absolute; left: 0; right: 0; top: 100%; margin-top: 2px; background: var(--sidebar-bg); border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,.3); z-index: 1000; display: flex; flex-direction: column; }
-.chat-popover.open { max-height: 340px; }
-.chat-popover-header { padding: 10px 14px; font-size: 12px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: .5px; flex-shrink: 0; }
-.chat-popover-empty { padding: 20px; text-align: center; font-size: 13px; color: #6b7280; }
-.chat-popover-list { overflow-y: auto; flex: 1; max-height: 260px; }
-.chat-popover-item { padding: 10px 14px; font-size: 13px; color: #d1d5db; cursor: pointer; display: flex; align-items: center; gap: 4px; }
-.chat-popover-item:hover { background: var(--sidebar-hover); }
-.chat-popover-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
-.chat-popover-delete { flex-shrink: 0; width: 24px; height: 24px; border-radius: 4px; border: none; background: none; color: #9ca3af; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.5; transition: all 0.15s; }
-.chat-popover-item:hover .chat-popover-delete { opacity: 0.8; }
-.chat-popover-delete:hover { opacity: 1 !important; background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-
-.chat-popover-actions { flex-shrink: 0; display: flex; align-items: center; gap: 2px; }
-.chat-popover-rename { flex-shrink: 0; width: 24px; height: 24px; border-radius: 4px; border: none; background: none; color: #9ca3af; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.5; transition: all 0.15s; }
-.chat-popover-item:hover .chat-popover-rename { opacity: 0.8; }
-.chat-popover-rename:hover { opacity: 1 !important; background: rgba(96, 165, 250, 0.15); color: #60a5fa; }
-.chat-popover-rename-input { flex: 1; min-width: 0; background: rgba(255,255,255,0.08); border: 1px solid rgba(96,165,250,0.4); border-radius: 4px; padding: 2px 6px; font-size: 13px; color: #e5e7eb; outline: none; }
-.chat-popover-rename-input:focus { border-color: #60a5fa; }
 
 
 /* ============ 渚ц竟鏍忓簳閮?============ */
@@ -96,12 +71,13 @@ body {
 .app-sidebar.collapsed .nav-item { justify-content: center; }
 .app-sidebar.collapsed .app-sidebar-header { justify-content: center; }
 
-.sidebar-user { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: #d1d5db; cursor: pointer; }
+.app-sidebar-footer { border-top: 1px solid #27272a; }
+.sidebar-user { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: #a1a1aa; cursor: pointer; }
 .sidebar-user:hover { background: var(--sidebar-hover); }
-.user-avatar { font-size: 16px; width: 28px; height: 28px; border-radius: 6px; background: #374151; display: flex; align-items: center; justify-content: center; }
+.user-avatar { font-size: 16px; width: 28px; height: 28px; border-radius: 6px; background: #27272a; display: flex; align-items: center; justify-content: center; }
 .user-arrow { margin-left: auto; }
-.sidebar-logout-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; background: none; border: none; color: #f0f0f0; font-size: 13px; cursor: pointer; border-radius: 6px; }
-.sidebar-logout-btn:hover { background: rgba(248,113,113,.15); }
+.sidebar-logout-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; background: none; border: none; color: #a1a1aa; font-size: 13px; cursor: pointer; border-radius: 6px; }
+.sidebar-logout-btn:hover { background: #27272a; color: #fff; }
 
 .sidebar-logout-group {
   max-height: 0;
@@ -409,31 +385,6 @@ body {
 .log-pagination button:disabled { opacity: .4; cursor: default; }
 .log-pagination span { font-size: 13px; color: var(--text-secondary); }
 
-/* ============ 鐧诲綍椤?============ */
-.login-page { display: flex; align-items: center; justify-content: center; height: 100vh; background: #f9f9f9; }
-.login-card { background: #fff; padding: 48px 40px; border-radius: 16px; width: 400px; max-width: 92%; border: 1px solid var(--border); box-shadow: 0 2px 16px rgba(0,0,0,.04); text-align: center; }
-.login-card h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
-.login-card .login-subtitle { color: var(--text-muted); font-size: 13px; margin-bottom: 32px; }
-.login-card .input-group { margin-bottom: 14px; text-align: left; position: relative; }
-.login-card .input-group input { width: 100%; padding: 10px 40px 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; outline: none; transition: border-color .15s; }
-.login-card .input-group input:focus { border-color: #000; }
-/* 闅愯棌娴忚鍣ㄨ嚜甯︾殑瀵嗙爜鐪肩潧鍥炬爣锛堜笌鑷畾涔夊浘鏍囬噸澶嶏級 */
-.login-card .input-group input[type="password"]::-ms-reveal,
-.login-card .input-group input[type="password"]::-ms-clear {
-  display: none;
-}
-.login-card .input-group input[type="password"]::-webkit-credentials-auto-fill-button {
-  display: none !important;
-  visibility: hidden;
-  pointer-events: none;
-}
-.login-card .input-group .pw-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 4px; display: flex; }
-.login-card .input-group .pw-toggle:hover { color: var(--text); }
-.login-btn { width: 100%; padding: 10px; background: #171717; color: #fff; border: none; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; cursor: pointer; margin-top: 6px; }
-.login-btn:hover { background: #333; }
-.login-error { color: #ef4444; font-size: 13px; margin-bottom: 8px; text-align: left; }
-.demo-btn { background: none; border: none; color: var(--text-muted); font-size: 13px; cursor: pointer; margin-top: 24px; }
-.demo-btn:hover { color: var(--text); }
 
 /* ============ Profile ============ */
 .profile-info { display: flex; flex-direction: column; gap: 12px; }

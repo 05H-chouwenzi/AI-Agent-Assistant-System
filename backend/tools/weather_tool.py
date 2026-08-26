@@ -5,9 +5,10 @@ Weather Tool —— 天气查询工具（基于 wttr.in 免费 API）
   - 内置 10 分钟缓存（每个城市独立），重复查询无需网络请求
   - 网络超时 5 秒，避免慢 API 拖慢响应
 """
+import asyncio
 import json
 import time
-import httpx
+import urllib.request
 from urllib.parse import quote
 
 from tools.base_tool import BaseTool, ToolResult
@@ -77,39 +78,44 @@ class WeatherTool(BaseTool):
                     execution_time_ms=round(elapsed, 2)
                 )
 
-        # ====== 2. 从网络获取（httpx + 3s 超时）======
-        try:
-            encoded_city = quote(city)
-            url = f"https://wttr.in/{encoded_city}?format=j1&lang=zh"
-            resp = httpx.get(url, headers={"User-Agent": "AI-Agent-Assistant/1.0"}, timeout=3.0)
-            if resp.status_code == 200:
-                data = resp.json()
-            else:
-                raise Exception(f"HTTP {resp.status_code}")
+        # ====== 2. 从网络获取（httpx + 超时，HTTPS 失败自动回退 HTTP）======
+        encoded_city = quote(city)
+        # HTTP 优先：实测 wttr.in HTTPS 在部分网络下经常 TLS 中断，HTTP 更稳定
+        urls = [
+            f"http://wttr.in/{encoded_city}?format=j1&lang=zh",
+            f"https://wttr.in/{encoded_city}?format=j1&lang=zh",
+        ]
+        last_error = None
+        for url in urls:
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "AI-Agent-Assistant/1.0"})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    raw = resp.read().decode("utf-8")
+                if resp.status == 200:
+                    data = json.loads(raw)
+                    weather_info = _parse_weather(data, city, days)
+                    _set_cache(city, weather_info)
+                    elapsed = (time.time() - start) * 1000
+                    return ToolResult(
+                        success=True,
+                        data=weather_info,
+                        tool_name=self.name,
+                        execution_time_ms=round(elapsed, 2)
+                    )
+                last_error = f"HTTP {resp.status}"
+            except Exception as e:
+                last_error = str(e)
 
-            weather_info = _parse_weather(data, city, days)
-
-            _set_cache(city, weather_info)
-
-            elapsed = (time.time() - start) * 1000
-            return ToolResult(
-                success=True,
-                data=weather_info,
-                tool_name=self.name,
-                execution_time_ms=round(elapsed, 2)
-            )
-
-        except Exception as e:
-            elapsed = (time.time() - start) * 1000
-            return ToolResult(
-                success=False,
-                error=f"天气 API 请求失败: {str(e)}",
-                tool_name=self.name,
-                execution_time_ms=round(elapsed, 2)
-            )
+        elapsed = (time.time() - start) * 1000
+        return ToolResult(
+            success=False,
+            error=f"天气 API 请求失败: {last_error}",
+            tool_name=self.name,
+            execution_time_ms=round(elapsed, 2)
+        )
 
     async def aexecute(self, **kwargs) -> ToolResult:
-        """异步版本：使用 httpx.AsyncClient，真正不阻塞事件循环"""
+        """异步版本：urllib 放入线程池执行，不阻塞事件循环"""
         city = kwargs.get("city", "")
         days = kwargs.get("days", 1)
 
@@ -130,35 +136,42 @@ class WeatherTool(BaseTool):
                     execution_time_ms=round(elapsed, 2)
                 )
 
-        try:
-            encoded_city = quote(city)
-            url = f"https://wttr.in/{encoded_city}?format=j1&lang=zh"
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get(url, headers={"User-Agent": "AI-Agent-Assistant/1.0"})
-                if resp.status_code == 200:
-                    data = resp.json()
-                else:
-                    raise Exception(f"HTTP {resp.status_code}")
+        encoded_city = quote(city)
+        # HTTP 优先：实测 wttr.in HTTPS 在部分网络下经常 TLS 中断，HTTP 更稳定
+        urls = [
+            f"http://wttr.in/{encoded_city}?format=j1&lang=zh",
+            f"https://wttr.in/{encoded_city}?format=j1&lang=zh",
+        ]
+        last_error = None
+        for url in urls:
+            try:
+                def _fetch(url=url):
+                    req = urllib.request.Request(url, headers={"User-Agent": "AI-Agent-Assistant/1.0"})
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        return resp.status, resp.read().decode("utf-8")
+                status, raw = await asyncio.to_thread(_fetch)
+                if status == 200:
+                    data = json.loads(raw)
+                    weather_info = _parse_weather(data, city, days)
+                    _set_cache(city, weather_info)
+                    elapsed = (time.time() - start) * 1000
+                    return ToolResult(
+                        success=True,
+                        data=weather_info,
+                        tool_name=self.name,
+                        execution_time_ms=round(elapsed, 2)
+                    )
+                last_error = f"HTTP {status}"
+            except Exception as e:
+                last_error = str(e)
 
-            weather_info = _parse_weather(data, city, days)
-            _set_cache(city, weather_info)
-
-            elapsed = (time.time() - start) * 1000
-            return ToolResult(
-                success=True,
-                data=weather_info,
-                tool_name=self.name,
-                execution_time_ms=round(elapsed, 2)
-            )
-
-        except Exception as e:
-            elapsed = (time.time() - start) * 1000
-            return ToolResult(
-                success=False,
-                error=f"天气 API 请求失败: {str(e)}",
-                tool_name=self.name,
-                execution_time_ms=round(elapsed, 2)
-            )
+        elapsed = (time.time() - start) * 1000
+        return ToolResult(
+            success=False,
+            error=f"天气 API 请求失败: {last_error}",
+            tool_name=self.name,
+            execution_time_ms=round(elapsed, 2)
+        )
 
 
 def _parse_weather(data: dict, city: str, days: int) -> dict:

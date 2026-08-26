@@ -1,0 +1,250 @@
+/* ============================================
+   登录 / 注册页 — 深色主题（仿照 Travel_AI_Agent 模板）
+   说明：选择器带 html 前缀，确保优先级高于 App.css 中的同名样式
+   ============================================ */
+html .login-page {
+  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #0a0a0a;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+html .login-card {
+  width: 400px;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  padding: 32px 40px 40px;
+  text-align: center;
+}
+
+html .login-card .login-title {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+html .login-card .login-subtitle {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+
+/* 登录 / 注册 Tab */
+html .login-tabs {
+  display: flex;
+  gap: 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 24px;
+}
+
+html .login-tab {
+  background: none;
+  border: none;
+  padding: 10px 0;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+html .login-tab:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+html .login-tab.active {
+  color: #fff;
+  font-weight: 500;
+}
+
+html .login-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: #1677ff;
+}
+
+/* 输入框 */
+html .login-card .input-group {
+  margin-bottom: 14px;
+  text-align: left;
+  position: relative;
+}
+
+html .login-card .input-group input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 40px 10px 14px;
+  background: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  color: #ececec;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+html .login-card .input-group input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+html .login-card .input-group input:focus {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.2);
+}
+
+html .login-card .input-group .pw-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 4px;
+  display: flex;
+}
+
+html .login-card .input-group .pw-toggle:hover {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* 覆盖浏览器自动填充强行加上的白色背景 */
+html .login-card .input-group input:-webkit-autofill,
+html .login-card .input-group input:-webkit-autofill:hover,
+html .login-card .input-group input:-webkit-autofill:focus,
+html .login-card .input-group input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #1e1e1e inset !important;
+  -webkit-text-fill-color: #ececec !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+}
+
+html .login-card .input-group input[type="password"]::-ms-reveal,
+html .login-card .input-group input[type="password"]::-ms-clear {
+  display: none;
+}
+
+html .login-card .input-group input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 提交按钮 */
+html .login-btn {
+  width: 100%;
+  height: 40px;
+  padding: 10px;
+  background: linear-gradient(135deg, #1677ff 0%, #0958d9 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: all 0.2s ease;
+}
+
+html .login-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2b8aff 0%, #1677ff 100%);
+}
+
+html .login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 登录页双栏布局：左侧测试账号模块 + 右侧登录卡片 */
+html .login-panels {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* 测试账号独立模块 */
+html .login-info-card {
+  position: absolute;
+  left: max(24px, calc(50% - 472px));
+  top: 50%;
+  transform: translateY(-50%);
+  width: 240px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(12px);
+}
+
+html .login-info-title {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+html .login-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+html .login-info-row:last-child {
+  border-bottom: none;
+}
+
+html .login-info-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+}
+
+html .login-info-value {
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+}
+
+html .login-error {
+  color: #ff7875;
+  font-size: 13px;
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+@media (max-width: 480px) {
+  html .login-panels {
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    height: auto;
+  }
+
+  html .login-info-card {
+    position: static;
+    transform: none;
+    width: 100%;
+  }
+
+  html .login-card {
+    width: 100%;
+    padding: 24px 20px 28px;
+  }
+}

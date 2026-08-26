@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getConversations, createConversation, deleteConversation, renameConversation } from "../api/chat";
 import ConfirmDialog from "./ConfirmDialog";
 import { useChat } from "../contexts/ChatContext";
+import "./SessionSidebar.css";
 
 const NAV_ITEMS = [
   { path: "/dashboard", label: "仪表盘", icon: (
@@ -39,33 +40,45 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const user = localStorage.getItem("user") || "未登录";
-  const [chatPop, setChatPop] = useState(false);
+  const isChatPath = location.pathname.startsWith("/chat");
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(() => location.pathname.startsWith("/chat"));
+  const showSessionSidebar = isChatPath && chatSidebarOpen;
+  const activeConvId = (() => {
+    const v = new URLSearchParams(location.search).get("conv");
+    return v ? parseInt(v) : null;
+  })();
   const [convs, setConvs] = useState([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
-  const chatNavRef = useRef();
   const { isThinking, thinkingStatus } = useChat();
 
+  // 进入 /chat 时刷新会话列表
   useEffect(() => {
-    function handleClick(e) {
-      if (chatNavRef.current && !chatNavRef.current.contains(e.target)) {
-        setChatPop(false);
-      }
+    if (isChatPath) {
+      fetchConvs();
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  }, [isChatPath]);
 
   async function fetchConvs() {
     try { const d = await getConversations(); setConvs(d); } catch { setConvs([]); }
   }
-  function handleChatToggle() {
-    setChatPop(p => {
+  function toggleChatSidebar() {
+    setChatSidebarOpen(p => {
       const next = !p;
       if (next) fetchConvs();
       return next;
     });
+  }
+
+  function handleChatNavClick() {
+    if (location.pathname.startsWith("/chat")) {
+      toggleChatSidebar();
+    } else {
+      navigate("/chat");
+      setChatSidebarOpen(true);
+      fetchConvs();
+    }
   }
 
   async function handleNewChat() {
@@ -73,7 +86,7 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
     catch (e) { console.error(e); }
   }
 
-  function selectConversation(id) { setChatPop(false); navigate("/chat?conv=" + id); }
+  function selectConversation(id) { navigate("/chat?conv=" + id); }
   function handleDeleteClick(e, id) { e.stopPropagation(); setConfirmDeleteId(id); }
 
   async function handleConfirmDelete() {
@@ -117,7 +130,10 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
     <div className="app-layout">
       <div className={"app-sidebar" + (collapsed ? " collapsed" : "")}>
         <div className="app-sidebar-header">
-          <span className="app-sidebar-logo">✦Enterprise AI</span>
+          <span className="app-sidebar-logo" onClick={() => navigate("/")} title="返回首页" style={{ cursor: "pointer" }}>
+          <span className="app-sidebar-logo-icon">E</span>
+          Enterprise AI
+        </span>
           <button className="sidebar-toggle" onClick={onToggle}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
@@ -127,57 +143,10 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
         <nav className="app-nav">
           {NAV_ITEMS.map((item) =>
             item.path === "/chat" ? (
-              <div key={item.path} style={{ position: "relative" }} ref={chatNavRef}>
-                <div className={"nav-item" + (location.pathname.startsWith("/chat") ? " active" : "")} onClick={() => { setChatPop(false); navigate("/chat"); }}>
-                  <span className="nav-icon">{item.icon}</span>
-                  <span className="nav-label nav-chat-label">{item.label}</span>
-                  {isThinking && <span className="nav-thinking-badge" title={thinkingStatus}>●</span>}
-                  <span className="nav-btn-group">
-                    <span className="nav-add-btn" onClick={(e) => { e.stopPropagation(); handleNewChat(); }} title="新建对话">+</span>
-                    <span className="nav-popover-btn" onClick={(e) => { e.stopPropagation(); handleChatToggle(); }} title="切换对话">▾</span>
-                  </span>
-                </div>
-                <div className={"chat-popover" + (chatPop ? " open" : "")}>
-                  {convs.length === 0 ? (
-                    <div className="chat-popover-empty">暂无语录</div>
-                  ) : (
-                    <div className="chat-popover-list">
-                      {convs.map((c) => (
-                        <div key={c.id} className="chat-popover-item" onClick={() => selectConversation(c.id)}>
-                          {renamingId === c.id ? (
-                            <input
-                              className="chat-popover-rename-input"
-                              value={renameValue}
-                              onChange={(e) => setRenameValue(e.target.value)}
-                              onKeyDown={handleRenameKeyDown}
-                              onBlur={handleRenameSave}
-                              autoFocus
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          ) : (
-                            <span className="chat-popover-title">{c.title}</span>
-                          )}
-                          <span className="chat-popover-actions">
-                            <button className="chat-popover-rename" onClick={(e) => handleRenameClick(e, c)} title="重命名">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                              </svg>
-                            </button>
-                            <button className="chat-popover-delete" onClick={(e) => handleDeleteClick(e, c.id)} title="删除对话">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                              </svg>
-                            </button>
-                          </span>
-                        </div>
-                      ))}
-                      {confirmDeleteId != null && (
-                        <ConfirmDialog open={true} title="删除对话" message="删除后将无法恢复，确定要删除该对话吗？" onCancel={handleCancelDelete} onConfirm={handleConfirmDelete} />
-                      )}
-                    </div>
-                  )}
-                </div>
+              <div key={item.path} className={"nav-item" + (location.pathname.startsWith("/chat") ? " active" : "")} onClick={handleChatNavClick}>
+                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-label nav-chat-label">{item.label}</span>
+                {isThinking && <span className="nav-thinking-badge" title={thinkingStatus}>●</span>}
               </div>
             ) : (
               <div key={item.path} className={"nav-item" + (location.pathname === item.path ? " active" : "")} onClick={() => navigate(item.path)}>
@@ -213,6 +182,55 @@ export default function AppSidebar({ collapsed, onToggle, children }) {
           </div>
         </div>
       </div>
+            {showSessionSidebar && (
+        <aside className="session-sidebar">
+          <div className="session-sidebar-header">
+            <button className="session-new-btn" onClick={handleNewChat}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              新对话
+            </button>
+          </div>
+          <div className="session-sidebar-list">
+            {convs.length === 0 ? (
+              <div className="session-sidebar-empty">暂无对话</div>
+            ) : (
+              convs.map((c) => (
+                <div key={c.id} className={"session-item" + (activeConvId === c.id ? " active" : "")} onClick={() => selectConversation(c.id)}>
+                  {renamingId === c.id ? (
+                    <input
+                      className="session-edit-input"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={handleRenameKeyDown}
+                      onBlur={handleRenameSave}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="session-title">{c.title || "新对话"}</span>
+                  )}
+                  <span className="session-actions">
+                    <button className="session-action-btn" onClick={(e) => handleRenameClick(e, c)} title="重命名">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                    <button className="session-action-btn danger" onClick={(e) => handleDeleteClick(e, c.id)} title="删除对话">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </span>
+                </div>
+              ))
+            )}
+            {confirmDeleteId != null && (
+              <ConfirmDialog open={true} title="删除对话" message="删除后将无法恢复，确定要删除该对话吗？" onCancel={handleCancelDelete} onConfirm={handleConfirmDelete} />
+            )}
+          </div>
+        </aside>
+      )}
       <div className={"app-content" + (isChat ? " chat-content" : "")}>{children}</div>
       {!isChat && isThinking && (
         <div className="global-thinking-bar" onClick={() => navigate("/chat")} title="点击回到 AI 助手查看回复">

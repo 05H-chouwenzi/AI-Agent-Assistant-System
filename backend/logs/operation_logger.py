@@ -56,6 +56,7 @@ class Actions:
     CONVERSATION_DELETE = "conversation.delete"
     CONVERSATION_VIEW = "conversation.view"
     CONVERSATION_LIST = "conversation.list"
+    CONVERSATION_UPDATE = "conversation.update"
 
     # 仪表盘
     DASHBOARD_STATS = "dashboard.stats"
@@ -86,6 +87,7 @@ ACTION_MODULE_MAP = {
     Actions.CONVERSATION_DELETE: "chat",
     Actions.CONVERSATION_VIEW: "chat",
     Actions.CONVERSATION_LIST: "chat",
+    Actions.CONVERSATION_UPDATE: "chat",
 
     # tool 范畴
     Actions.TOOL_WEATHER: "tool",
@@ -320,6 +322,7 @@ class OperationLogger:
             Actions.CONVERSATION_DELETE: "删除会话",
             Actions.CONVERSATION_VIEW: "查看消息",
             Actions.CONVERSATION_LIST: "获取会话列表",
+            Actions.CONVERSATION_UPDATE: "重命名会话",
         }
         label = action_labels.get(action, "会话操作")
         return OperationLogger.write(
@@ -337,6 +340,7 @@ class OperationLogger:
 # ── 异步后台写入（火抛，不阻塞请求路径）──────────────────────
 
 import asyncio
+from database.session import SessionLocal
 
 async def async_log_chat_question(
     *,

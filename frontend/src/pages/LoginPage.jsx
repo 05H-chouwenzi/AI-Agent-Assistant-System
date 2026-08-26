@@ -1,13 +1,25 @@
 import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { login, register } from "../api/chat";
+import "./LoginPage.css";
 
 export default function LoginPage() {
-  const [mode, setMode] = useState("login"); // login | register
+  const nav = useNavigate();
+  const location = useLocation();
+  const [mode, setMode] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("tab") === "register" ? "register" : "login";
+  }); // login | register
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const switchMode = (m) => {
+    setMode(m);
+    setError("");
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,12 +35,12 @@ export default function LoginPage() {
         const data = await login(username, password);
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", data.username);
-        window.location.href = "/";
+        nav("/");
       } else {
         const data = await login(username, password);
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", data.username);
-        window.location.href = "/";
+        nav("/");
       }
     } catch (err) {
       const data = err.response?.data;
@@ -40,16 +52,39 @@ export default function LoginPage() {
     }
   };
 
-  const switchMode = () => {
-    setMode(mode === "login" ? "register" : "login");
-    setError("");
-  };
-
   return (
     <div className="login-page">
-      <div className="login-card">
-        <h1>企业 AI 智能助手</h1>
+      <div className="login-panels">
+        <div className="login-info-card">
+          <div className="login-info-title">测试账号</div>
+          <div className="login-info-row">
+            <span className="login-info-label">账号</span>
+            <span className="login-info-value">admin</span>
+          </div>
+          <div className="login-info-row">
+            <span className="login-info-label">密码</span>
+            <span className="login-info-value">admin123</span>
+          </div>
+        </div>
+
+        <div className="login-card">
+        <h1 className="login-title">企业 AI 智能助手</h1>
         <p className="login-subtitle">Enterprise AI Assistant</p>
+
+        <div className="login-tabs">
+          <button
+            className={"login-tab" + (mode === "login" ? " active" : "")}
+            onClick={() => switchMode("login")}
+          >
+            登录
+          </button>
+          <button
+            className={"login-tab" + (mode === "register" ? " active" : "")}
+            onClick={() => switchMode("register")}
+          >
+            注册
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit}>
           <div className="input-group">
@@ -86,10 +121,7 @@ export default function LoginPage() {
             {loading ? "处理中..." : mode === "login" ? "登 录" : "注 册"}
           </button>
         </form>
-
-        <button className="demo-btn" onClick={switchMode}>
-          {mode === "login" ? "没有账号？去注册" : "已有账号？去登录"}
-        </button>
+        </div>
       </div>
     </div>
   );

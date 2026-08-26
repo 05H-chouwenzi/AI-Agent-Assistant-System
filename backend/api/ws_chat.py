@@ -14,6 +14,9 @@ from agent.workflow.graph import agent_graph
 from agent.graph.state import AgentState
 from utils.auth import decode_access_token
 from agent.graph.router import AGENT_LABELS
+from agent.nodes.fast_router import FastRouter
+from tools.tool_manager import get_tool_manager, register_default_tools
+from tools.formatter import format_tool_result
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["WebSocket"])
@@ -71,14 +74,26 @@ async def chat_websocket(
             if not user_message:
                 continue
 
-            async with AsyncSessionLocal() as db:
-                await create_message(db, conversation_id, "user", user_message)
-                conv = await get_conversation(db, conversation_id, user.id)
-                if conv and (not conv.title or conv.title == _DEFAULT_TITLE):
-                    await update_conversation_title(db, conversation_id, user_message[:30], user.id)
-                    await websocket.send_json({"type": "title_update", "title": user_message[:30]})
+            # ========== FastRouter 旁路：零 LLM 调用处理简单请求（与 /send、/stream 一致）==========
+            _fast_router = FastRouter()
+            _match = _fast_router.route(user_message)
+            if _match and _match.is_final:
+                register_default_tools()
+                _manager = get_tool_manager()
+                _result = await _manager.aexecute(_match.tool_name, **_match.tool_args)
+                _fast_response = format_tool_result(_result, _match.tool_name)
+                async with AsyncSessionLocal() as db:
+                    await create_message(db, conversation_id, "user", user_message)
+                    await create_message(db, conversation_id, "assistant", _fast_response)
+                    conv = await get_conversation(db, conversation_id, user.id)
+                    if conv and (not conv.title or conv.title == _DEFAULT_TITLE):
+                        await update_conversation_title(db, conversation_id, user_message[:30], user.id)
+                        await websocket.send_json({"type": "title_update", "title": user_message[:30]})
+                await websocket.send_json({"type": "token", "content": _fast_response})
+                await websocket.send_json({"type": "done", "content": _fast_response, "conversation_id": conversation_id})
+                continue
 
-            # 加载历史消息（LangChain 格式）
+            # 先加载历史消息（不包含当前消息），避免重复
             async with AsyncSessionLocal() as db:
                 past = await get_conversation_messages(db, conversation_id)
             history_messages = []
@@ -87,6 +102,13 @@ async def chat_websocket(
                     history_messages.append(HumanMessage(content=m.content))
                 elif m.role == "assistant":
                     history_messages.append(AIMessage(content=m.content))
+
+            async with AsyncSessionLocal() as db:
+                await create_message(db, conversation_id, "user", user_message)
+                conv = await get_conversation(db, conversation_id, user.id)
+                if conv and (not conv.title or conv.title == _DEFAULT_TITLE):
+                    await update_conversation_title(db, conversation_id, user_message[:30], user.id)
+                    await websocket.send_json({"type": "title_update", "title": user_message[:30]})
 
             state = AgentState(
                 messages=[*history_messages, HumanMessage(content=user_message)],
