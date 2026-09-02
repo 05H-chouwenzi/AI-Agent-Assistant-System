@@ -1,6 +1,6 @@
-"""LangGraph Workflow —— 循环图（Worker 完成后回 supervisor 继续调度，多步Agent协作）
+"""LangGraph Workflow —— 循环图（Worker 完成后回 supervisor 继续调度，多步 Agent 协作）
 
-  START -> supervisor（LLM路由 + 启发式兜底）
+  START -> supervisor（LLM 路由 + 启发式兜底）
              ┦┬ research / data / general（create_react_agent）
              ┦       └ supervisor / synthesize
              ┦└┬┬┬ synthesize → END
@@ -47,7 +47,11 @@ def _build_graph():
         graph.add_conditional_edges(
             worker,
             route_after_worker,
-            {"supervisor": "supervisor", "synthesize": "synthesize"},
+            {
+                "supervisor": "supervisor",
+                "synthesize": "synthesize",
+                "end": END,
+            },
         )
 
     graph.add_edge("synthesize", END)
