@@ -1,4 +1,4 @@
-"""聊天流式接口（SSE 推送）—— 统一走循环图"""
+"""聊天流式接口（SSE 推送）—— 真正的实时流式输出，只推送最终答案"""
 import asyncio
 import json
 import time
@@ -17,7 +17,6 @@ from models.user import User
 from utils.auth import get_current_user, require_tenant_access
 from agent.workflow.graph import agent_graph
 from agent.graph.state import AgentState
-from agent.graph.router import AGENT_LABELS
 from agent.nodes.fast_router import FastRouter
 from tools.tool_manager import get_tool_manager, register_default_tools
 from tools.formatter import format_tool_result
@@ -33,18 +32,22 @@ def _strip_md(text: str) -> str:
     text = re.sub(r'\|', '', text)
     text = re.sub(r'^>', '', text, flags=re.MULTILINE)
     text = re.sub(r'^-{3,}', '', text, flags=re.MULTILINE)
-    text = re.sub(r':', '', text)
+    text = re.sub(r':', '', '')
     return text
+
 
 router = APIRouter(prefix="/api/chat", tags=["聊天"])
 _DEFAULT_TITLE = "新对话"
+
 
 class ChatStreamRequest(BaseModel):
     question: str
     conversation_id: int = 0
 
+
 def sse_event(event_type: str, content, ensure_ascii=False) -> str:
     return f"data: {json.dumps({'type': event_type, 'content': content}, ensure_ascii=ensure_ascii)}\n\n"
+
 
 @router.post("/stream")
 async def chat_stream(
@@ -59,6 +62,9 @@ async def chat_stream(
     async def event_stream():
         stream_start = time.time()
         try:
+            # ========== 立即发送 start 事件，告诉前端 Agent 已经开始执行 ==========
+            yield sse_event("start", {"question": question[:50]})
+
             # ========== FastRouter 旁路：零 LLM 调用处理简单请求 ==========
             _fast_router = FastRouter()
             _match = _fast_router.route(question)
@@ -76,7 +82,7 @@ async def chat_stream(
                 if not conv_id or conv_id == 0:
                     conv = await create_conversation(db, question[:30], user.id, user.tenant_id)
                     conv_id = conv.id
-                past = (await get_conversation_messages(db, conv_id))[-20:]  # 只取最近 20 条 if conv_id > 0 else []
+                past = (await get_conversation_messages(db, conv_id))[-20:] if conv_id > 0 else []
                 await create_message(db, conv_id, "user", question)
 
             history_messages = []
@@ -93,33 +99,46 @@ async def chat_stream(
             )
 
             full_answer = ""
-            graph_events_received = False
-            async for event in agent_graph.astream_events(state, version="v2"):
-                graph_events_received = True
-                kind = event.get("event")
-                metadata = event.get("metadata")
-                node = metadata.get("langgraph_node", "") if isinstance(metadata, dict) else ""
+            
+            # ========== 真正的流式输出策略 ==========
+            # 使用 astream() 获取状态的 incremental updates
+            # 每次都捕获最新的 AI 消息，推送到前端
+            
+            # 存储已接收过的完整消息列表
+            received_messages = {}
+            
+            async for stream_chunk in agent_graph.astream(state, config={"recursion_limit": 20}):
+                # stream_chunk 是一个 AgentState 对象，包含所有消息
+                messages = stream_chunk.messages
+                
+                # 找到所有的 AI 消息
+                for msg in reversed(messages):
+                    if isinstance(msg, AIMessage):
+                        msg_id = id(msg)
+                        content = msg.content
+                        
+                        if isinstance(content, str):
+                            cleaned = _strip_md(content)
+                            
+                            # 只在第一次收到该消息时推送
+                            if msg_id not in received_messages:
+                                received_messages[msg_id] = True
+                                
+                                # 计算增量
+                                new_content = cleaned[len(full_answer):] if len(full_answer) < len(cleaned) else ""
+                                if new_content:
+                                    full_answer = cleaned
+                                    yield sse_event("chunk", new_content)
 
-                # Token 流 — 只流 worker 的 token，跳过 supervisor
-                if kind == "on_chat_model_stream":
-                    data = event.get("data")
-                    chunk = data.get("chunk") if isinstance(data, dict) else None
-                    if chunk and hasattr(chunk, "content") and chunk.content:
-                        # Worker token 直接流出，不再过滤（工作流已简化为 Worker→END，无多余 LLM 调用）
-                        cleaned = _strip_md(chunk.content)
-                        if cleaned:
-                            full_answer += cleaned
-                            yield sse_event("chunk", cleaned)
-
-            # Fallback: 仅在流式 API 完全失败（零事件）时才走非流式
-            # 正常情况即使回答为空也不会触发此分支，避免双重 LLM 调用
-            if not graph_events_received:
+            # Fallback：如果完全没有事件，走同步调用
+            if not full_answer:
                 result = await agent_graph.ainvoke(state)
-                last = result["messages"][-1]
-                if isinstance(last, AIMessage):
-                    full_answer = last.content if isinstance(last.content, str) else str(last.content)
-                    yield sse_event("chunk", full_answer)
+                last_msg = result["messages"][-1]
+                if isinstance(last_msg, AIMessage):
+                    full_answer = last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content)
+                    yield sse_event("chunk", _strip_md(full_answer))
 
+            # 兜底：如果仍为空
             if not full_answer:
                 full_answer = "抱歉，我暂时无法回答这个问题。"
 
@@ -141,7 +160,7 @@ async def chat_stream(
             yield sse_event("done", {"content": full_answer, "conversation_id": conv_id})
 
         except Exception as e:
-            logger.error(f"chat_stream 异常: {e}", exc_info=True)
+            logger.error(f"chat_stream 异常：{e}", exc_info=True)
             yield sse_event("error", f"系统错误：{str(e)}")
 
     return StreamingResponse(
