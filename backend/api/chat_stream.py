@@ -1,4 +1,7 @@
-"""聊天流式接口（SSE 推送）—— 真正的实时流式输出，只推送最终答案"""
+"""聊天流式接口 (SSE 推送) —— 真正的 LLM Token Streaming
+
+采用 LangGraph astream_events() + AIMessageChunk 实现真正的 token-level streaming
+"""
 import asyncio
 import json
 import time
@@ -32,7 +35,6 @@ def _strip_md(text: str) -> str:
     text = re.sub(r'\|', '', text)
     text = re.sub(r'^>', '', text, flags=re.MULTILINE)
     text = re.sub(r'^-{3,}', '', text, flags=re.MULTILINE)
-    text = re.sub(r':', '', '')
     return text
 
 
@@ -46,7 +48,8 @@ class ChatStreamRequest(BaseModel):
 
 
 def sse_event(event_type: str, content, ensure_ascii=False) -> str:
-    return f"data: {json.dumps({'type': event_type, 'content': content}, ensure_ascii=ensure_ascii)}\n\n"
+    data = {'type': event_type, 'content': content}
+    return f"data: {json.dumps(data, ensure_ascii=ensure_ascii)}\n\n"
 
 
 @router.post("/stream")
@@ -62,10 +65,9 @@ async def chat_stream(
     async def event_stream():
         stream_start = time.time()
         try:
-            # ========== 立即发送 start 事件，告诉前端 Agent 已经开始执行 ==========
             yield sse_event("start", {"question": question[:50]})
 
-            # ========== FastRouter 旁路：零 LLM 调用处理简单请求 ==========
+            # FastRouter 旁路
             _fast_router = FastRouter()
             _match = _fast_router.route(question)
             if _match and _match.is_final:
@@ -100,43 +102,45 @@ async def chat_stream(
 
             full_answer = ""
             
-            # ========== 真正的流式输出策略 ==========
-            # 使用 astream() 获取状态的 incremental updates
-            # 每次都捕获最新的 AI 消息，推送到前端
+            # ========== 真正的 Token Streaming using astream_events() ==========
+            # LangGraph v0.2+ 支持通过 events 流式传递 LLM token
+            # 监听 on_llm_new_token 事件来获取真正的 token 流
             
-            # 存储已接收过的完整消息列表
-            received_messages = {}
-            
-            async for stream_chunk in agent_graph.astream(state, config={"recursion_limit": 20}):
-                # stream_chunk 是一个 AgentState 对象，包含所有消息
-                messages = stream_chunk.messages
+            async for event in agent_graph.astream_events(
+                state, 
+                config={"recursion_limit": 20},
+                version="v2"
+            ):
+                kind = event.get("event")
                 
-                # 找到所有的 AI 消息
-                for msg in reversed(messages):
-                    if isinstance(msg, AIMessage):
-                        msg_id = id(msg)
-                        content = msg.content
-                        
-                        if isinstance(content, str):
-                            cleaned = _strip_md(content)
-                            
-                            # 只在第一次收到该消息时推送
-                            if msg_id not in received_messages:
-                                received_messages[msg_id] = True
-                                
-                                # 计算增量
-                                new_content = cleaned[len(full_answer):] if len(full_answer) < len(cleaned) else ""
-                                if new_content:
-                                    full_answer = cleaned
-                                    yield sse_event("chunk", new_content)
-
-            # Fallback：如果完全没有事件，走同步调用
-            if not full_answer:
-                result = await agent_graph.ainvoke(state)
-                last_msg = result["messages"][-1]
-                if isinstance(last_msg, AIMessage):
-                    full_answer = last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content)
-                    yield sse_event("chunk", _strip_md(full_answer))
+                # 监听 LLM token 生成事件 (真正的 token-level streaming)
+                if kind == "on_llm_new_token":
+                    data = event.get("data", {})
+                    token = data.get("token", "")
+                    
+                    if token:
+                        cleaned = _strip_md(token)
+                        new_chunk = cleaned[len(full_answer):] if len(cleaned) > len(full_answer) else ""
+                        if new_chunk:
+                            full_answer = cleaned
+                            yield sse_event("chunk", new_chunk)
+                
+                # 同时也监听 on_chain_end 来捕获完整消息作为兜底
+                elif kind == "on_chain_end":
+                    data = event.get("data", {})
+                    output = data.get("output", None)
+                    
+                    if output and hasattr(output, "get"):
+                        messages = output.get("messages", [])
+                        for msg in reversed(messages):
+                            if isinstance(msg, AIMessage):
+                                msg_content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                                if msg_content:
+                                    cleaned = _strip_md(msg_content)
+                                    new_chunk = cleaned[len(full_answer):] if len(cleaned) > len(full_answer) else ""
+                                    if new_chunk:
+                                        full_answer = cleaned
+                                        yield sse_event("chunk", new_chunk)
 
             # 兜底：如果仍为空
             if not full_answer:
@@ -160,8 +164,8 @@ async def chat_stream(
             yield sse_event("done", {"content": full_answer, "conversation_id": conv_id})
 
         except Exception as e:
-            logger.error(f"chat_stream 异常：{e}", exc_info=True)
-            yield sse_event("error", f"系统错误：{str(e)}")
+            logger.error(f"chat_stream 异常:{e}", exc_info=True)
+            yield sse_event("error", f"系统错误:{str(e)}")
 
     return StreamingResponse(
         event_stream(), media_type="text/event-stream",

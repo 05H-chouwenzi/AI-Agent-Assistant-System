@@ -8,7 +8,7 @@
 
 **性能优化完成**: Token 成本降低 70-94%，响应速度提升 60-80%，真正的流式输出体验。
 
-## 智能体工作流架构
+## 🔥 最新动态：真正的 LLM Token Streaming<br><br>**2026-09-03** - 完成真正的 Token-level Streaming 改造，从 Graph State Update 升级为 LLM Token Streaming。<br><br>### 🎯 本次升级重点<br><br>#### 1. 真正的 Token Streaming（最高优先级）<br>- ✅ 原方案：`astream()` 返回 Graph State Update → 字符串 diff 计算增量 ❌<br>- ✅ 新方案：`astream_events(version="v2")` + `on_llm_new_token` → 原生 token 流 ✅<br>- ✅ 删除危险兜底：移除 `astream 失败→ainvoke 整个 Graph` 的重执行逻辑<br><br>**数据流对比**:<br><br>| 类型 | 修改前 | 修改后 ||------|--------|--------||Streaming 级别 | Graph State | **LLM Token** || 实现方式 | 字符串长度差 `cleaned[len(full_answer):]` | **`on_llm_new_token` 原生事件** || Synthesize 延迟 | `ainvoke()` 等待完整结果 | 实时 token 流 |<br><br>```python<br># 原来的假 streaming<br>async for stream_chunk in agent_graph.astream(state, config={"recursion_limit": 20}):<br>#    ...字符串 diff 计算<br><br># 现在的真 streaming (本版本)<br>async for event in agent_graph.astream_events(<br>#     state,<br>#     config={"recursion_limit": 20},<br>#     version="v2"<br># ):<br>#     kind = event.get("event")<br>#     if kind == "on_llm_new_token":<br>#         token = event["data"]["token"]<br>#         yield sse_event("chunk", token)  # 真正的逐 token 推送<br>```<br><br>#### 2. Supervisor 双阈值路由策略优化<br>- ✅ 新增配置:`MIN_SCORE_DIFFERENTIAL = 2` (第一名与第二名最小分差)<br>- ✅ 规则路由条件:第一名 >=5 **且** 第一名 - 第二名 >=2<br>- ✅ 防止复杂任务误判：如"查询销售数据并结合公司制度分析"不再被简单路由<br><br>#### 3. Worker/Synthesizer 保持架构不变<br>- ✅ Worker 仍使用`ainvoke()`(streaming 在 chat_stream.py 层通过 astream_events 捕获)<br>- ✅ Synthesizer 同样改为 ReAct Agent + `astream_events()`支持<br>- ✅ 零重构原有 Agent 工作流架构<br><br>---<br><br>## 智能体工作流架构
 
 双层设计：FastRouter（零 LLM 直通层）+ LangGraph 循环图（带 Supervisor 路由）。
 
@@ -170,3 +170,4 @@ docker-compose up -d
 | 用户体验 | 卡顿→出现 | 流畅流式 | 😊 |
 
 ### 许可证：MIT
+

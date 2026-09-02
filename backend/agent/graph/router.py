@@ -1,6 +1,7 @@
-"""LangGraph 路由：关键词评分 + 置信度阈值 + LLM 兜底
+"""LangGraph 路由：关键词评分 + 双阈值置信度策略 + LLM 兜底
 
-优化方案：高置信度规则路由跳过 Supervisor LLM，降低调用次数。"""
+优化方案：双阈值策略 - 第一名>=5 且 第一名 - 第二名>=2 才允许规则路由
+"""
 import re
 from typing import Literal, Tuple, Union
 
@@ -11,7 +12,8 @@ RouteTarget = Literal["research", "data", "general", "synthesize", "FINISH"]
 MAX_GRAPH_STEPS = 6
 
 # ====== 配置：高置信度阈值 ======
-HIGH_CONFIDENCE_THRESHOLD = 5  # 评分≥5 判定为高置信度，直接规则路由
+HIGH_CONFIDENCE_THRESHOLD = 5  # 第一名得分阈值
+MIN_SCORE_DIFFERENTIAL = 2     # 第一名与第二名最小分差
 
 RESEARCH_KEYWORDS = [
     ("知识库", 3), ("文档", 2), ("手册", 2), ("政策", 2), ("规章", 2),
@@ -47,11 +49,8 @@ def score_keywords(text: str, keywords: list[tuple[str, int]]) -> int:
     return sum(weight for kw, weight in keywords if kw in text_lower)
 
 
-def heuristic_route(text: str, route_history: list[str]) -> Tuple[RouteTarget, int]:
-    """
-    基于关键词评分的启发式路由，返回 (路由目标，置信度得分)
-    已执行过的 Agent 降权（避免重复）
-    """
+def score_keywords_all(text: str, route_history: list[str]) -> dict[str, int]:
+    """计算所有候选 Agent 的关键词得分（用于双阈值判断）"""
     scores = {
         "research": score_keywords(text, RESEARCH_KEYWORDS),
         "data": score_keywords(text, DATA_KEYWORDS),
@@ -63,9 +62,26 @@ def heuristic_route(text: str, route_history: list[str]) -> Tuple[RouteTarget, i
         if agent in scores:
             scores[agent] = max(0, scores[agent] - 2)
     
+    return scores
+
+
+def heuristic_route(text: str, route_history: list[str]) -> Tuple[RouteTarget, int]:
+    """
+    基于关键词评分的启发式路由，返回 (路由目标，置信度得分)
+    已执行过的 Agent 降权（避免重复）
+    """
+    scores = {
+        "research": score_keywords(text, RESEARCH_KEYWORDS),
+        "data": score_keywords(text, DATA_KEYWORDS),
+        "general": score_keywords(text, GENERAL_KEYWORDS),
+    }
+    
+    for agent in route_history:
+        if agent in scores:
+            scores[agent] = max(0, scores[agent] - 2)
+    
     best = max(scores, key=scores.get)
     
-    # 若无任何匹配 → general
     if scores[best] == 0:
         return "general", 0
     
@@ -100,31 +116,21 @@ def _is_worker_message(msg: MessageContent, allowed_agents: set) -> bool:
         agent = additional.get("agent", "")
         return agent in allowed_agents
     if hasattr(msg, "additional_kwargs") and hasattr(msg.additional_kwargs, "get"):
-        agent = getattr(msg.additional_kwargs, "get", lambda x, d=""): x
+        agent = msg.additional_kwargs.get("agent", "")
         return agent in allowed_agents
     return False
 
 
 def worker_can_finish(state) -> bool:
-    """
-    Worker 完成后判断是否可以结束。
-    
-    简单策略（无需调用 LLM）：
-    - Research/Data/General 首次执行后：如果问题明确单一，可以直接返回答案
-    - 但保留多轮协作的空间：若用户暗示需要多个来源，或问题较复杂，则继续
-    
-    返回：True=可以结束，False=需要 Supervisor 继续调度
-    """
+    """Worker 完成后判断是否可以直接结束"""
     messages = state.get("messages", [])
     history = state.get("route_history", [])
     last_worker = state.get("last_worker", "")
     
     # 第一步：检查是否有多个 Agent 被调度过（复杂任务标志）
     if len(history) >= 2:
-        # 已经调度了多个 Agent → 可能需要 Synthesize
         return False
     
-    # 第二步：获取 Worker 最新回复（从后往前找第一个 Worker 消息）
     latest_worker_msg = None
     allowed_agents = {"research", "data", "general"}
     
@@ -136,19 +142,18 @@ def worker_can_finish(state) -> bool:
     if not latest_worker_msg:
         return False
     
-    # 第三步：规则判断是否可以结束
     content = _get_msg_content(latest_worker_msg)
+    if len(content) < 10:
+        return False
     
-    # Research Worker：如果包含引用来源或"根据 xxx 文档/手册/知识库"，说明已有完整答案
+    # Research Worker：如果回答是完整段落且无追问提示
     if last_worker == "research":
-        research_indicators = ["根据", "在", "文档", "手册", "知识库", "规定", "制度", "条款", "原文", "来源"]
-        has_source = any(indicator in content for indicator in research_indicators)
-        if has_source and "?" not in content[:50]:
-            return True  # 有明确引用来源且未提新问题
+        if "?" not in content and len(content.split()) > 10:
+            return True
     
-    # Data Worker：如果有具体数据、数字、结论，通常可以结束
+    # Data Worker：如果有明确的数据结论
     if last_worker == "data":
-        data_indicators = ["元", "个", "条", "份", "人", "金额", "万元", "%", "总计", "平均"]
+        data_indicators = ["数据显示", "统计表明", "根据数据", "查询结果"]
         has_data = any(indicator in content for indicator in data_indicators)
         if has_data and "?" not in content[:50]:
             return True
@@ -158,7 +163,6 @@ def worker_can_finish(state) -> bool:
         if "?" not in content and len(content.split()) > 5:
             return True
     
-    # 默认：不确定时不急于结束，给 Supervisor 决策空间
     return False
 
 
@@ -225,24 +229,16 @@ def parse_supervisor_decision(raw: str) -> RouteTarget | None:
 
 
 def route_from_supervisor(state) -> str:
-    """Supervisor 路由选择 → 解析后的目标
-    
-    核心逻辑：
-    - 单个 Worker 完成后选择 FINISH → 直接返回该 Worker 结果
-    - 多个 Worker 完成后选择 FINISH → 进入 Synthesize 综合整理
-    """
+    """Supervisor 路由选择 → 解析后的目标"""
     nxt = state.get("next_agent", "general")
     history = state.get("route_history", [])
     
     if nxt in ("FINISH", "finish"):
         if not history:
-            # 第一次路由就直接说 Finish → 走通用 Agent
             return "general"
         elif len(history) <= 1:
-            # 只调度过 1 个 Worker → 直接返回该 Worker 的结果
             return "end"
         else:
-            # 调度过多个 Worker → 需要 Synthesize 综合
             return "synthesize"
     
     if nxt in ("research", "data", "general", "synthesize"):
@@ -252,14 +248,12 @@ def route_from_supervisor(state) -> str:
 
 def route_after_worker(state) -> str:
     """Worker 完成后先判断是否可以直接结束，否则回到 Supervisor"""
-    # Step 1: Worker 完成后的快速判断
     if worker_can_finish(state):
         return "end"
     
-    # Step 2: 步数上限强制结束
     step = state.get("step_count", 0)
     if step >= MAX_GRAPH_STEPS:
         return "synthesize"
     
-    # Step 3: 回 Supervisor 继续调度
     return "supervisor"
+
