@@ -53,6 +53,7 @@ from router.dashboard import router as dashboard_router
 from router.users import router as user_router
 
 from tools.tool_manager import register_default_tools
+from agent.graph.nodes import warm_up_agents
 
 
 @asynccontextmanager
@@ -82,6 +83,7 @@ async def lifespan(app: FastAPI):
 
     print("数据库表创建完成")
     register_default_tools()
+    warm_up_agents()
     print("默认工具注册完成")
     yield
 

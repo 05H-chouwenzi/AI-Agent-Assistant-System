@@ -57,6 +57,11 @@ def _get_agent(agent_key: str) -> object:
     return _agent_cache[agent_key]
 
 
+def warm_up_agents() -> None:
+    """启动阶段预编译 Worker Agent，避免首次请求支付编译耗时。"""
+    _build_agents()
+
+
 def _latest_user_text(state: AgentState) -> str:
     for msg in reversed(state["messages"]):
         if isinstance(msg, HumanMessage):
