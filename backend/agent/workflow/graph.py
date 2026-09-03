@@ -1,19 +1,16 @@
-"""LangGraph Workflow —— 循环图（Worker 完成后回 supervisor 继续调度，多步 Agent 协作）
+"""LangGraph Workflow —— 直线图（Worker 完成后直接结束）
 
-  START -> supervisor（LLM 路由 + 启发式兜底）
-             ┦┬ research / data / general（create_react_agent）
-             ┦       └ supervisor / synthesize
-             ┦└┬┬┬ synthesize → END
+  START -> supervisor（路由）
+            ├── research / data / general（create_react_agent）
+            │       └── END
 """
 from agent.graph.nodes import (
     data_node,
     general_node,
     research_node,
     supervisor_node,
-    synthesize_node,
 )
 from agent.graph.router import (
-    route_after_worker,
     route_from_supervisor,
 )
 from agent.graph.state import AgentState
@@ -28,7 +25,6 @@ def _build_graph():
     graph.add_node("research", research_node)
     graph.add_node("data", data_node)
     graph.add_node("general", general_node)
-    graph.add_node("synthesize", synthesize_node)
 
     graph.add_edge(START, "supervisor")
     graph.add_conditional_edges(
@@ -38,23 +34,13 @@ def _build_graph():
             "research": "research",
             "data": "data",
             "general": "general",
-            "synthesize": "synthesize",
             "end": END,
         },
     )
 
+    # Worker 完成后直接结束（不再循环回 supervisor）
     for worker in ("research", "data", "general"):
-        graph.add_conditional_edges(
-            worker,
-            route_after_worker,
-            {
-                "supervisor": "supervisor",
-                "synthesize": "synthesize",
-                "end": END,
-            },
-        )
-
-    graph.add_edge("synthesize", END)
+        graph.add_edge(worker, END)
 
     return graph.compile()
 
@@ -70,7 +56,9 @@ def get_agent_graph():
     return _agent_graph
 
 
+# 向后兼容：保留 agent_graph 属性访问
 class _GraphProxy:
+    """代理对象，首次访问任意属性时才触发真正的图编译"""
     def __getattr__(self, name):
         return getattr(get_agent_graph(), name)
 

@@ -15,7 +15,7 @@
 ### ✨ 核心特性
 
 * Multi-Agent 协作框架 (Supervisor-Worker)
-* Token Streaming (stream mode="updates")
+* **Token Streaming** (stream_events + on_llm_new_token) 真正的字级实时流式输出
 * 智能工作流路由 (FastRouter + Supervisor)
 * 本地优先 RAG (ChromaDB)
 * 全链路性能监控
@@ -62,10 +62,15 @@ docker-compose up -d
 
 ## 📝 更新日志
 
-### v1.2.0 (2026-09-03) - Agent 核心深度优化
+### v1.2.1 (2026-09-03) - Token Streaming 真实化
 
-✅ P0: Worker edges 修复 \| Token Streaming \| 删除重执行降级  
-✅ P1: 双阈值策略 \| 降权机制 \| Same Worker 检测 \| 上下文优化 \| temp=0  
+✅ **P0**: 真正 Token Streaming (on_llm_new_token)  
+   - 从 \stream_mode=\"updates\"\ 改为 \stream_events(version=\"v2\")\  
+   - 监听 \on_llm_new_token\ 事件而非 \on_chat_model_stream\  
+   - 前端体验：字级实时流式输出，类似 ChatGPT  
+
+✅ P1: Worker edges 修复 | 删除重执行降级  
+✅ P1: 双阈值策略 | 降权机制 | Same Worker 检测 | 上下文优化 | temp=0  
 ✅ P2: 性能监控模块 monitor.py
 
 ---
