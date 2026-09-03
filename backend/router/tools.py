@@ -112,7 +112,7 @@ def search_knowledge(
             db,
             user_id=current_user.id,
             query=req.query,
-            docs_count=len(result.data.get("results", [])) if isinstance(result.data, dict) else 1,
+            docs_count=len(result.data.get("结果", [])) if isinstance(result.data, dict) else 1,
             success=True,
             source="api",
             elapsed_ms=int(elapsed),

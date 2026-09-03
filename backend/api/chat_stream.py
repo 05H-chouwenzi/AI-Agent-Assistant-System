@@ -78,9 +78,9 @@ async def chat_stream(
                 _fast_response = format_tool_result(_result, _match.tool_name)
                 monitor.record_first_user_visible_token("fast_router")
                 yield sse_event("chunk", _fast_response)
+                yield sse_event("done", {"content": _fast_response, "conversation_id": req.conversation_id})
                 monitor.finish()
                 _metrics_logger.info("\n%s", monitor.get_metrics())
-                yield sse_event("done", {"content": _fast_response, "conversation_id": req.conversation_id})
                 return
 
             conv_id = req.conversation_id
@@ -125,7 +125,10 @@ async def chat_stream(
                     monitor.record_node_start(run_id, node)
 
                 if kind == "on_chat_model_start":
-                    monitor.record_llm_call(outer_node)
+                    monitor.record_llm_start(run_id, outer_node)
+
+                if kind == "on_chat_model_end":
+                    monitor.record_llm_end(run_id)
 
                 if kind == "on_chat_model_stream" and outer_node in VISIBLE_STREAM_NODES:
                     data = event.get("data", {})
@@ -171,7 +174,6 @@ async def chat_stream(
             if not full_answer:
                 full_answer = "抱歉，我暂时无法回答这个问题。"
 
-            monitor.finish()
             asyncio.create_task(async_log_chat_question(
                 user_id=user.id,
                 question=question,
@@ -185,11 +187,12 @@ async def chat_stream(
             async with AsyncSessionLocal() as db:
                 await create_message(db, conv_id, "assistant", full_answer)
                 conv = await get_conversation(db, conv_id, user.id)
-                if conv and (not conv.title or conv.title == _DEFAULT_TITLE):
-                    await update_conversation_title(db, conv_id, question[:30], user.id)
+            if conv and (not conv.title or conv.title == _DEFAULT_TITLE):
+                await update_conversation_title(db, conv_id, question[:30], user.id)
 
-            _metrics_logger.info("\n%s", monitor.get_metrics())
             yield sse_event("done", {"content": full_answer, "conversation_id": conv_id})
+            monitor.finish()
+            _metrics_logger.info("\n%s", monitor.get_metrics())
 
         except Exception as e:
             logger.error(f"chat_stream 异常：{e}", exc_info=True)

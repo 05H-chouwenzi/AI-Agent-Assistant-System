@@ -21,6 +21,8 @@ class AgentMetrics:
     total_latency_ms: float = 0.0
     node_time_ms: Dict[str, float] = field(default_factory=lambda: defaultdict(float))
     llm_calls: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    llm_time_ms: Dict[str, float] = field(default_factory=lambda: defaultdict(float))
+    llm_durations_ms: Dict[str, List[float]] = field(default_factory=lambda: defaultdict(list))
     tool_calls: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
     tool_time_ms: Dict[str, float] = field(default_factory=lambda: defaultdict(float))
     route_history: List[str] = field(default_factory=list)
@@ -43,6 +45,10 @@ class AgentMetrics:
             "llm_calls": {
                 **{name: self.llm_calls.get(name, 0) for name in LLM_NAMES},
                 "total": sum(self.llm_calls.values()),
+            },
+            "llm_time_ms": dict(self.llm_time_ms),
+            "llm_durations_ms": {
+                name: list(durations) for name, durations in self.llm_durations_ms.items()
             },
             "tool_calls": {
                 **dict(self.tool_calls),
@@ -69,9 +75,8 @@ class AgentMetrics:
             "Node Time:",
             *[f"  {name}: {self.node_time_ms.get(name, 0):.0f}ms" for name in NODE_NAMES],
             "",
-            "LLM Calls:",
-            *[f"  {name}: {self.llm_calls.get(name, 0)}" for name in LLM_NAMES],
-            f"  Total: {sum(self.llm_calls.values())}",
+            "LLM:",
+            *self._llm_log_lines(),
             "",
             "Tool Calls:",
             *(tool_lines or ["  N/A"]),
@@ -79,6 +84,23 @@ class AgentMetrics:
             f"Route History: {routes}",
         ]
         return "\n".join(lines)
+
+    def _llm_log_lines(self):
+        lines = []
+        llm_names = [*LLM_NAMES, *(name for name in self.llm_calls if name not in LLM_NAMES)]
+        for name in llm_names:
+            calls = self.llm_calls.get(name, 0)
+            if not calls:
+                continue
+            total_ms = self.llm_time_ms.get(name, 0)
+            duration_text = f", {total_ms:.0f}ms" if self.llm_durations_ms.get(name) else ""
+            call_text = "call" if calls == 1 else "calls"
+            lines.append(f"  {name}: {calls} {call_text}{duration_text}")
+            for index, elapsed_ms in enumerate(self.llm_durations_ms.get(name, []), 1):
+                lines.append(f"    {name}_llm_{index}: {elapsed_ms:.0f}ms")
+        if not lines:
+            lines.append("  N/A")
+        return lines
 
 
 class PerformanceMonitor:
@@ -89,6 +111,7 @@ class PerformanceMonitor:
         self._node_starts: Dict[str, tuple[str, int]] = {}
         self._run_nodes: Dict[str, str] = {}
         self._tool_starts: Dict[str, tuple[str, int]] = {}
+        self._llm_starts: Dict[str, tuple[str, int]] = {}
 
     def record_first_user_visible_token(self, source: str) -> None:
         if self.metrics.first_user_visible_token_perf_ns is not None:
@@ -124,6 +147,20 @@ class PerformanceMonitor:
 
     def record_llm_call(self, node: str) -> None:
         self.metrics.llm_calls[node if node in LLM_NAMES else "unknown"] += 1
+
+    def record_llm_start(self, run_id: str, node: str) -> None:
+        llm_name = node if node in LLM_NAMES else "unknown"
+        self.metrics.llm_calls[llm_name] += 1
+        self._llm_starts[run_id] = (llm_name, time.perf_counter_ns())
+
+    def record_llm_end(self, run_id: str) -> None:
+        started = self._llm_starts.pop(run_id, None)
+        if not started:
+            return
+        llm_name, started_ns = started
+        elapsed_ms = (time.perf_counter_ns() - started_ns) / 1_000_000
+        self.metrics.llm_time_ms[llm_name] += elapsed_ms
+        self.metrics.llm_durations_ms[llm_name].append(elapsed_ms)
 
     def record_tool_start(self, run_id: str, tool_name: str, node: str = "") -> None:
         del node

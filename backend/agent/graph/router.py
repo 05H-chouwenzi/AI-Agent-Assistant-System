@@ -110,7 +110,7 @@ SUPERVISOR_PROMPT = """你是企业 AI Agent 平台的 Supervisor（任务调度
 WORKER_PROMPTS = {
     "research": (
         "你是 Research Agent，专注企业知识库检索与文档问答。\n"
-        "规则：优先调用 search_knowledge_base；引用来源；找不到时明确说明。"
+        "规则：优先调用 rag_search；引用来源；找不到时明确说明。"
     ),
     "data": (
         "你是 Data Agent，专注只读 SQL 与数据分析。\n"

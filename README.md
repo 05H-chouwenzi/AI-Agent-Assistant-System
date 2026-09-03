@@ -89,6 +89,7 @@ Route History: research
 * 真实用户可见 TTFT
 * FastRouter / Supervisor / Worker / Tool 耗时
 * Supervisor、Research、Data、General、Synthesize 的 LLM 调用次数
+* Supervisor、Research、Data、General、Synthesize 的 LLM 调用耗时
 * 按工具名统计的调用次数与耗时
 * 实际路由历史
 
@@ -183,6 +184,13 @@ python -m pytest tests/test_agent_metrics.py -q
 ```
 
 ## 更新日志
+
+### v1.2.4 - 2026-09-03
+
+* 修复 Research Agent 知识库检索：统一使用 `rag_search` 工具名。
+* 修正知识库检索结果统计字段，保证检索日志计数正确。
+* 增加 LLM 调用耗时统计与明细。
+* 调整 SSE `done` 事件和监控完成顺序，避免流式结束前提前关闭统计。
 
 ### v1.2.3 - 2026-09-03
 
