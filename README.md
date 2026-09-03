@@ -14,6 +14,7 @@
 * Agent 工作流：FastRouter 规则旁路、Supervisor 调度、Research / Data / General 协作。
 * RAG 检索：文档上传、切分、向量索引和语义召回，支持 FAISS 与 pgvector。
 * 流式输出：基于 LangGraph 事件流的 Token Streaming，避免等待完整结果。
+* 消息渲染：AI 回复支持 Markdown 标题、加粗、列表、表格和代码块。
 * 性能监控：请求级 TTFT、节点耗时、LLM 调用次数、Tool 调用统计和路由历史。
 * 应用能力：用户登录、会话管理、知识库、工具中心、日志和仪表盘。
 * 启动预热：应用启动时预编译 Worker Agent，降低首次请求延迟。
@@ -184,6 +185,13 @@ python -m pytest tests/test_agent_metrics.py -q
 ```
 
 ## 更新日志
+
+### v1.2.5 - 2026-09-03
+
+* 修复同一秒内用户消息与 AI 回复排序不稳定的问题，历史消息改为按 `created_at` 和消息 ID 排序。
+* 修复后端继承旧环境变量导致 RAG Embedding 返回 `401 invalid_api_key` 的问题。
+* AI 回复支持 Markdown 渲染，包括标题、加粗、列表、表格和代码块。
+* 将流式输出中的 Agent 状态提示移动到当前 AI 回复上方。
 
 ### v1.2.4 - 2026-09-03
 

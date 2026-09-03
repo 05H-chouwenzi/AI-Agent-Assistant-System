@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from typing import List
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 
 # Export variables directly

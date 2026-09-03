@@ -12,7 +12,7 @@ def get_conversation_messages(db: Session, conv_id: int) -> list[Message]:
     return (
         db.query(Message)
         .filter(Message.conversation_id == conv_id)
-        .order_by(Message.created_at.asc())
+        .order_by(Message.created_at.asc(), Message.id.asc())
         .all()
     )
 

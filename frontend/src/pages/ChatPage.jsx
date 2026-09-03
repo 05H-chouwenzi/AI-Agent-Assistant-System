@@ -65,6 +65,10 @@ export default function ChatPage() {
   const [searchParams] = useSearchParams();
   const fileInputRef = useRef(null);
 
+  const streamingMessage = loading && messages.at(-1)?.role === "assistant"
+    ? messages.at(-1)
+    : null;
+
   // 消息更新时自动滚动到底部
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -137,28 +141,13 @@ export default function ChatPage() {
               <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileChange} style={{ display: "none" }} />
             </div>
           ) : (
-            messages.map((msg) => <ChatMessage key={msg.id} message={msg} />)
-          )}
-          {loading && (
-            <div className="message message-ai">
-              <div className="message-avatar">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
-                </svg>
-              </div>
-              <div className="message-content">
-                <div className="message-bubble">
-                  <div className="thinking-status">
-                    <span className="thinking-dots">
-                      <span className="dot" /><span className="dot" /><span className="dot" />
-                    </span>
-                    {thinkingStatus && (
-                      <span className="thinking-text">{thinkingStatus}</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            messages.map((msg) => (
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                thinkingStatus={msg.id === streamingMessage?.id ? thinkingStatus : undefined}
+              />
+            ))
           )}
           <div ref={bottomRef} />
         </div>

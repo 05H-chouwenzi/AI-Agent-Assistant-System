@@ -52,7 +52,7 @@ async def get_conversation_messages(db: AsyncSession, conv_id: int) -> list[Mess
     result = await db.execute(
         select(Message)
         .where(Message.conversation_id == conv_id)
-        .order_by(Message.created_at.asc())
+        .order_by(Message.created_at.asc(), Message.id.asc())
     )
     return result.scalars().all()
 
