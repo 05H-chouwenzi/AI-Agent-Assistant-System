@@ -21,12 +21,56 @@
 
 ## 当前架构
 
-```text
-用户请求
-  |
-  +-- FastRouter 命中规则 --> Tool --> 直接返回
-  |
-  +-- 未命中 --> Supervisor --> Research / Data / General --> END
+```mermaid
+flowchart TB
+    User["用户输入"] --> FR
+    Return["返回用户"]
+
+    subgraph Layer1["Layer 1: FastRouter"]
+        direction TB
+        FR["FastRouter<br/>规则/关键词快速匹配<br/>零 LLM 调用"]
+        Tool["直接执行工具<br/>Weather / Calculator /<br/>Greeting / DateTime"]
+    end
+
+    subgraph Layer2["Layer 2: LangGraph 循环图"]
+        direction TB
+        SUP["Supervisor 节点<br/>启发式路由"]
+
+        RW["Research Worker<br/>知识检索 Agent"]
+        DW["Data Worker<br/>SQL 数据分析 Agent"]
+        GW["General Worker<br/>通用问答 Agent"]
+
+        STEP{"step_count < 2?"}
+        SYNQ{"需要 Synthesize?"}
+        SYN["Synthesize Node<br/>聚合多 Worker 结果"]
+        FINAL["最终回答"]
+    end
+
+    FR -- "命中" --> Tool
+    Tool --> HitRoute[" "]
+    HitRoute --> Return
+
+    FR -- "未命中" --> SUP
+
+    SUP -- "research" --> RW
+    SUP -- "data" --> DW
+    SUP -- "general" --> GW
+
+    RW --> STEP
+    DW --> STEP
+    GW --> STEP
+
+    STEP -- "是" --> SUP
+    STEP -- "否" --> SYNQ
+
+    SYNQ -- "1 个 Worker" --> FINAL
+    SYNQ -- "≥2 个不同 Worker" --> SYN
+    SYN --> FINAL
+
+    FINAL --> Return
+
+    classDef ghost fill:transparent,stroke:transparent,color:transparent;
+    class HitRoute ghost;
 ```
 
 当前主流程保持轻量：FastRouter 是零 LLM 调用的规则旁路；Supervisor 使用启发式路由；Worker 使用带工具的 ReAct Agent。没有新增 Planner、Reflection 或 Critic。
@@ -183,38 +227,3 @@ docker-compose --profile pgvector up -d
 cd backend
 python -m pytest tests/test_agent_metrics.py -q
 ```
-
-## 更新日志
-
-### v1.2.5 - 2026-09-03
-
-* 修复同一秒内用户消息与 AI 回复排序不稳定的问题，历史消息改为按 `created_at` 和消息 ID 排序。
-* 修复后端继承旧环境变量导致 RAG Embedding 返回 `401 invalid_api_key` 的问题。
-* AI 回复支持 Markdown 渲染，包括标题、加粗、列表、表格和代码块。
-* 将流式输出中的 Agent 状态提示移动到当前 AI 回复上方。
-
-### v1.2.4 - 2026-09-03
-
-* 修复 Research Agent 知识库检索：统一使用 `rag_search` 工具名。
-* 修正知识库检索结果统计字段，保证检索日志计数正确。
-* 增加 LLM 调用耗时统计与明细。
-* 调整 SSE `done` 事件和监控完成顺序，避免流式结束前提前关闭统计。
-
-### v1.2.3 - 2026-09-03
-
-* 增加应用启动阶段的 Worker Agent 预热，降低首次请求延迟。
-* 整理 README 的功能、配置、部署和测试说明。
-
-### v1.2.2 - 2026-09-03
-
-* 修正 TTFT 统计：只统计请求开始到第一个用户可见 SSE Token。
-* 增加请求级 Agent 节点耗时、LLM 调用次数和 Tool 调用统计。
-* 修复嵌套 `create_react_agent` 事件归属，恢复连续 Token Streaming。
-* 移除零 Token 场景下重复执行整个 Graph 的回退逻辑。
-* 避免 Supervisor、Tool 参数或多个 Worker 内部输出重复展示。
-
-### v1.2.1 - 2026-09-03
-
-* 引入基于 `astream_events` 的 Token 流式输出。
-* 优化 Supervisor 路由和 Worker 结束逻辑。
-* 增加基础性能监控模块。
