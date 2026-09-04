@@ -47,8 +47,7 @@ flowchart TB
     end
 
     FR -- "命中" --> Tool
-    Tool --> HitRoute[" "]
-    HitRoute --> Return
+    Tool --> Return
 
     FR -- "未命中" --> SUP
 
@@ -69,8 +68,6 @@ flowchart TB
 
     FINAL --> Return
 
-    classDef ghost fill:transparent,stroke:transparent,color:transparent;
-    class HitRoute ghost;
 ```
 
 当前主流程保持轻量：FastRouter 是零 LLM 调用的规则旁路；Supervisor 使用启发式路由；Worker 使用带工具的 ReAct Agent。没有新增 Planner、Reflection 或 Critic。
