@@ -22,6 +22,7 @@
 ## 当前架构
 
 ```mermaid
+%%{init: {"flowchart": {"curve": "linear"}}}%%
 flowchart TB
     User["用户输入"]
 
