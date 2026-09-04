@@ -43,13 +43,12 @@ flowchart TB
         STEP{"step_count < 2?"}
         SYNQ{"需要 Synthesize?"}
         SYN["Synthesize Node<br/>聚合多 Worker 结果"]
-        FINAL["最终回答"]
     end
 
-    FR -- "命中" --> Tool
-    Tool --> Return
-    Tool ~~~ SUP
+    FINAL["最终回答"]
 
+    FR -- "命中" --> Tool
+    Tool --> FINAL
     FR -- "未命中" --> SUP
 
     SUP -- "research" --> RW
@@ -69,6 +68,10 @@ flowchart TB
 
     FINAL --> Return
 
+    User ~~~ Layer1
+    Layer1 ~~~ Layer2
+    Layer2 ~~~ FINAL
+    FINAL ~~~ Return
 ```
 
 当前主流程保持轻量：FastRouter 是零 LLM 调用的规则旁路；Supervisor 使用启发式路由；Worker 使用带工具的 ReAct Agent。没有新增 Planner、Reflection 或 Critic。
