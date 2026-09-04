@@ -48,6 +48,7 @@ flowchart TB
 
     FR -- "命中" --> Tool
     Tool --> Return
+    Tool ~~~ SUP
 
     FR -- "未命中" --> SUP
 
