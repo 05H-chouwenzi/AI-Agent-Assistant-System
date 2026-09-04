@@ -23,13 +23,13 @@
 
 ```mermaid
 flowchart TB
-    User["用户输入"] --> FR
-    Return["返回用户"]
+    User["用户输入"]
 
     subgraph Layer1["Layer 1: FastRouter"]
         direction TB
         FR["FastRouter<br/>规则/关键词快速匹配<br/>零 LLM 调用"]
         Tool["直接执行工具<br/>Weather / Calculator /<br/>Greeting / DateTime"]
+        FR -- "命中" --> Tool
     end
 
     subgraph Layer2["Layer 2: LangGraph 循环图"]
@@ -43,35 +43,27 @@ flowchart TB
         STEP{"step_count < 2?"}
         SYNQ{"需要 Synthesize?"}
         SYN["Synthesize Node<br/>聚合多 Worker 结果"]
+        FINAL["最终回答"]
+
+        SUP -- "research" --> RW
+        SUP -- "data" --> DW
+        SUP -- "general" --> GW
+        RW --> STEP
+        DW --> STEP
+        GW --> STEP
+        STEP -- "是" --> SUP
+        STEP -- "否" --> SYNQ
+        SYNQ -- "1 个 Worker" --> FINAL
+        SYNQ -- "≥2 个不同 Worker" --> SYN
+        SYN --> FINAL
     end
 
-    FINAL["最终回答"]
+    Return["返回用户"]
 
-    FR -- "命中" --> Tool
-    Tool --> FINAL
-    FR -- "未命中" --> SUP
-
-    SUP -- "research" --> RW
-    SUP -- "data" --> DW
-    SUP -- "general" --> GW
-
-    RW --> STEP
-    DW --> STEP
-    GW --> STEP
-
-    STEP -- "是" --> SUP
-    STEP -- "否" --> SYNQ
-
-    SYNQ -- "1 个 Worker" --> FINAL
-    SYNQ -- "≥2 个不同 Worker" --> SYN
-    SYN --> FINAL
-
-    FINAL --> Return
-
-    User ~~~ Layer1
-    Layer1 ~~~ Layer2
-    Layer2 ~~~ FINAL
-    FINAL ~~~ Return
+    User --> Layer1
+    Layer1 -- "命中" --> Return
+    Layer1 -- "未命中" --> Layer2
+    Layer2 --> Return
 ```
 
 当前主流程保持轻量：FastRouter 是零 LLM 调用的规则旁路；Supervisor 使用启发式路由；Worker 使用带工具的 ReAct Agent。没有新增 Planner、Reflection 或 Critic。
