@@ -3,7 +3,7 @@
 """
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import Integer, cast, desc, func
 from models.knowledge_doc import KnowledgeDoc
 
 
@@ -38,9 +38,10 @@ def list_docs(
 ) -> tuple[int, list[KnowledgeDoc]]:
     """分页获取文档列表，返回 (总数, 当前页列表)"""
     q = db.query(KnowledgeDoc)
+    numeric_prefix = cast(func.substring_index(KnowledgeDoc.title, "_", 1), Integer)
     total = q.count()
     items = (
-        q.order_by(desc(KnowledgeDoc.created_at))
+        q.order_by(desc(numeric_prefix), desc(KnowledgeDoc.id))
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()

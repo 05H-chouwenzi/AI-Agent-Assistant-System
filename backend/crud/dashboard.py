@@ -3,7 +3,7 @@
 """
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, Date, case
+from sqlalchemy import func, cast, Date, case, and_
 from models.conversation import Conversation
 from models.message import Message
 from models.knowledge_doc import KnowledgeDoc
@@ -92,7 +92,7 @@ def get_recent_conversations_with_last_message(
         )
         .join(
             last_time_sub,
-            db.and_(
+            and_(
                 Message.conversation_id == last_time_sub.c.conversation_id,
                 Message.created_at == last_time_sub.c.max_time,
             ),
