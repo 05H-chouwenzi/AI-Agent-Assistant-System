@@ -136,7 +136,7 @@ export default function HomePage() {
       </main>
 
       <footer className="home-footer">
-        FastAPI · LangGraph · DeepSeek · React
+        FastAPI · LangGraph · 通义千问 · React
       </footer>
     </div>
   )

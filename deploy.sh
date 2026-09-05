@@ -184,7 +184,7 @@ if [[ "$RECONFIG" =~ ^[Yy]$ ]]; then
   echo "# ---- 聊天 LLM 配置 ----" >> "$ENV_FILE"
   echo "LLM_API_KEY=${LLM_KEY:-$DASHSCOPE_KEY}" >> "$ENV_FILE"
   echo "LLM_BASE_URL=${LLM_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}" >> "$ENV_FILE"
-  echo "LLM_MODEL=${LLM_MODEL_NAME:-qwen-plus}" >> "$ENV_FILE"
+  echo "LLM_MODEL=${LLM_MODEL_NAME:-qwen3.5-flash}" >> "$ENV_FILE"
   echo "" >> "$ENV_FILE"
   echo "# ---- CORS 跨域来源 ----" >> "$ENV_FILE"
   echo "CORS_ORIGINS=$CORS_ORIGINS" >> "$ENV_FILE"

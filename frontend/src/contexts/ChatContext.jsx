@@ -108,6 +108,25 @@ export function ChatProvider({ children }) {
 
     const token = localStorage.getItem("token");
     let aiContent = "";
+    let pendingTokens = "";
+    let flushTimer = null;
+    let clientStreamDebugCount = 0;
+    let lastClientTokenAt = null;
+
+    const flushPendingTokens = () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      if (!pendingTokens) return;
+
+      aiContent += pendingTokens;
+      pendingTokens = "";
+      setStreamingContent(aiContent);
+      setMessages((prev) =>
+        prev.map((m) => m.id === aiMsgId ? { ...m, content: aiContent } : m)
+      );
+    };
 
     // ── WebSocket 连接 ──
     const ws = connectChatWs(
@@ -115,13 +134,32 @@ export function ChatProvider({ children }) {
       token,
       (data) => {
         switch (data.type) {
-          case "token":
-            aiContent += data.content;
-            setStreamingContent(aiContent);
-            setMessages((prev) =>
-              prev.map((m) => m.id === aiMsgId ? { ...m, content: aiContent } : m)
-            );
+          case "token": {
+            const receivedAt = performance.now();
+            if (clientStreamDebugCount < 20) {
+              clientStreamDebugCount += 1;
+              const receivedInterval = lastClientTokenAt === null ? 0 : receivedAt - lastClientTokenAt;
+              console.debug("[CLIENT_STREAM_DEBUG] " + JSON.stringify({
+                chunk: clientStreamDebugCount,
+                receive_timestamp: new Date().toISOString(),
+                receive_interval_ms: Number(receivedInterval.toFixed(3)),
+                content_len: typeof data.content === "string" ? data.content.length : String(data.content ?? "").length,
+              }));
+              lastClientTokenAt = receivedAt;
+            }
+
+            if (!aiContent && !pendingTokens) {
+              pendingTokens += data.content;
+              flushPendingTokens();
+              break;
+            }
+
+            pendingTokens += data.content;
+            if (!flushTimer) {
+              flushTimer = setTimeout(flushPendingTokens, 35);
+            }
             break;
+          }
 
           case "route":
             // Agent 路由轨迹 — 显示为状态提示
@@ -139,6 +177,7 @@ export function ChatProvider({ children }) {
             break;
 
           case "done": {
+            flushPendingTokens();
             const finalContent = data.content || aiContent;
             if (finalContent) {
               setMessages((prev) =>
@@ -154,6 +193,11 @@ export function ChatProvider({ children }) {
           }
 
           case "error":
+            if (flushTimer) {
+              clearTimeout(flushTimer);
+              flushTimer = null;
+            }
+            pendingTokens = "";
             setMessages((prev) =>
               prev.map((m) => m.id === aiMsgId
                 ? { ...m, content: data.content || "服务异常，请稍后重试" }
@@ -187,17 +231,21 @@ export function ChatProvider({ children }) {
     );
 
     // 保存 WebSocket 引用以便取消
-    abortRef.current = { ws, aiMsgId };
+    abortRef.current = { ws, aiMsgId, flushPendingTokens };
 
     // 发送消息
     sendChatMessage(ws, question);
   }, [refreshConversations]);
 
   const cancelStream = useCallback(() => {
-    if (abortRef.current?.ws) {
-      abortRef.current.ws.close();
-      abortRef.current = null;
+    const current = abortRef.current;
+    if (current?.flushPendingTokens) {
+      current.flushPendingTokens();
     }
+    if (current?.ws) {
+      current.ws.close();
+    }
+    abortRef.current = null;
     setLoading(false);
     setIsThinking(false);
     setThinkingStatus("");

@@ -127,7 +127,7 @@ body {
 .message-user .message-avatar { background: var(--sidebar-bg); color: #fff; }
  .message-user { flex-direction: row-reverse; }
  .message-user .message-content { flex: 0 1 auto; max-width: calc(100% - 46px); min-width: 0; text-align: right; }
-.message-ai .message-avatar { background: var(--green); color: #fff; }
+.message-ai .message-avatar { background: #126EF3; border-radius: 50%; color: #fff; font-weight: 700; }
 .message-content { flex: 1; min-width: 0; padding-top: 4px; }
 .message-bubble { font-size: 15px; line-height: 1.75; color: var(--text); }
 .message-markdown > :first-child { margin-top: 0; }

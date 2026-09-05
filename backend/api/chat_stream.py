@@ -46,6 +46,48 @@ def _message_text(message) -> str:
     return content if isinstance(content, str) else str(content)
 
 
+_SSE_KEEPALIVE_INTERVAL_SECONDS = 15.0
+_QUEUE_END = object()
+_QUEUE_KEEPALIVE = object()
+
+
+async def _iter_graph_events_with_keepalive(source, *, interval: float):
+    """转发 LangGraph 事件，并在上游长时间无事件时插入 SSE keepalive 标记。"""
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def _produce_events():
+        try:
+            async for event in source:
+                await queue.put(event)
+        except Exception as exc:
+            await queue.put(exc)
+        finally:
+            await queue.put(_QUEUE_END)
+
+    async def _produce_keepalive():
+        while True:
+            await asyncio.sleep(interval)
+            await queue.put(_QUEUE_KEEPALIVE)
+
+    producer_task = asyncio.create_task(_produce_events())
+    keepalive_task = asyncio.create_task(_produce_keepalive())
+    try:
+        while True:
+            item = await queue.get()
+            if item is _QUEUE_END:
+                break
+            if item is _QUEUE_KEEPALIVE:
+                yield {"event": "__sse_keepalive__"}
+                continue
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        keepalive_task.cancel()
+        producer_task.cancel()
+        await asyncio.gather(keepalive_task, producer_task, return_exceptions=True)
+
+
 @router.post("/stream")
 async def chat_stream(
     req: ChatStreamRequest,
@@ -58,6 +100,11 @@ async def chat_stream(
 
     async def event_stream():
         monitor = PerformanceMonitor()
+        stream_started_perf_ns = time.perf_counter_ns()
+        stream_started_epoch_ms = time.time_ns() // 1_000_000
+        last_event_perf_ns = stream_started_perf_ns
+        last_event_kind = ""
+        last_event_node = ""
         try:
             # FastRouter 旁路：零 LLM 调用处理简单请求。
             fast_router_start = time.perf_counter_ns()
@@ -110,19 +157,41 @@ async def chat_stream(
 
             full_answer = ""
             worker_answers: dict[str, str] = {}
+            synthesize_started = False
 
             # LangGraph v2 事件流能把节点、模型 token 和工具调用区分开。
-            async for event in agent_graph.astream_events(state, version="v2"):
+            source = agent_graph.astream_events(state, version="v2")
+            _metrics_logger.info(
+                "[SSE_STREAM_START] stream_start=%d question_len=%d conversation_id=%d",
+                stream_started_epoch_ms,
+                len(question),
+                conv_id,
+            )
+            async for event in _iter_graph_events_with_keepalive(
+                source,
+                interval=_SSE_KEEPALIVE_INTERVAL_SECONDS,
+            ):
                 kind = event.get("event")
+                if kind == "__sse_keepalive__":
+                    yield ": keepalive\n\n"
+                    continue
+
                 metadata = event.get("metadata")
                 node = metadata.get("langgraph_node", "") if isinstance(metadata, dict) else ""
                 name = event.get("name", "")
                 run_id = event.get("run_id", "")
                 parent_ids = event.get("parent_ids", [])
                 outer_node = monitor.resolve_node(node, parent_ids)
+                last_event_perf_ns = time.perf_counter_ns()
+                last_event_kind = kind
+                last_event_node = outer_node or node or last_event_node
 
                 if kind == "on_chain_start" and name == node:
                     monitor.record_node_start(run_id, node)
+                    if node == "synthesize":
+                        synthesize_started = True
+                        # 多 Worker 场景：最终答案只保留 Synthesize 聚合结果。
+                        full_answer = ""
 
                 if kind == "on_chat_model_start":
                     monitor.record_llm_start(run_id, outer_node)
@@ -136,6 +205,9 @@ async def chat_stream(
                     token = getattr(chunk, "content", "")
                     if isinstance(token, str) and token:
                         monitor.record_first_user_visible_token(outer_node)
+                        if outer_node == "synthesize" and not synthesize_started:
+                            synthesize_started = True
+                            full_answer = ""
                         full_answer += token
                         yield sse_event("chunk", token)
 
@@ -156,6 +228,14 @@ async def chat_stream(
                         text = _message_text(messages[-1])
                         if text:
                             worker_answers[node] = text
+
+                if kind == "on_chain_end" and node == "synthesize":
+                    data = event.get("data", {})
+                    output = data.get("output", {}) if isinstance(data, dict) else {}
+                    messages = output.get("messages", []) if isinstance(output, dict) else []
+                    full_answer = _message_text(messages[-1]) if messages else ""
+                    if not full_answer:
+                        full_answer = "抱歉，我暂时无法回答这个问题。"
 
                 if kind == "on_chain_end" and node == "supervisor":
                     data = event.get("data", {})
@@ -194,8 +274,45 @@ async def chat_stream(
             monitor.finish()
             _metrics_logger.info("\n%s", monitor.get_metrics())
 
+        except asyncio.CancelledError:
+            now_ns = time.perf_counter_ns()
+            _metrics_logger.warning(
+                "[SSE_STREAM_CANCELLED] stream_start=%d elapsed_ms=%.1f "
+                "last_event_age_ms=%.1f last_event_kind=%s last_event_node=%s "
+                "question_len=%d",
+                stream_started_epoch_ms,
+                (now_ns - stream_started_perf_ns) / 1_000_000,
+                (now_ns - last_event_perf_ns) / 1_000_000,
+                last_event_kind or "N/A",
+                last_event_node or "N/A",
+                len(question),
+            )
+            raise
+        except GeneratorExit:
+            now_ns = time.perf_counter_ns()
+            _metrics_logger.warning(
+                "[SSE_STREAM_DISCONNECTED] stream_start=%d elapsed_ms=%.1f "
+                "last_event_age_ms=%.1f last_event_kind=%s last_event_node=%s "
+                "question_len=%d",
+                stream_started_epoch_ms,
+                (now_ns - stream_started_perf_ns) / 1_000_000,
+                (now_ns - last_event_perf_ns) / 1_000_000,
+                last_event_kind or "N/A",
+                last_event_node or "N/A",
+                len(question),
+            )
+            raise
         except Exception as e:
             logger.error(f"chat_stream 异常：{e}", exc_info=True)
+            _metrics_logger.error(
+                "[SSE_STREAM_ERROR] elapsed_ms=%.1f last_event_age_ms=%.1f "
+                "last_event_kind=%s last_event_node=%s question_len=%d",
+                (time.perf_counter_ns() - stream_started_perf_ns) / 1_000_000,
+                (time.perf_counter_ns() - last_event_perf_ns) / 1_000_000,
+                last_event_kind or "N/A",
+                last_event_node or "N/A",
+                len(question),
+            )
             monitor.finish()
             _metrics_logger.info("\n%s", monitor.get_metrics())
             yield sse_event("error", f"系统错误：{str(e)}")

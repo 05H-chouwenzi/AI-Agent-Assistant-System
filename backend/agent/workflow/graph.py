@@ -1,20 +1,34 @@
-"""LangGraph Workflow —— 直线图（Worker 完成后直接结束）
+"""LangGraph Workflow —— 循环图（Worker 回到 Supervisor；多 Worker 结果聚合）
 
   START -> supervisor（路由）
             ├── research / data / general（create_react_agent）
-            │       └── END
+            │       └── supervisor
+            └── FINISH → 1 个 Worker：END / ≥2 个 Worker：synthesize
 """
 from agent.graph.nodes import (
     data_node,
     general_node,
     research_node,
     supervisor_node,
+    synthesize_node,
 )
 from agent.graph.router import (
     route_from_supervisor,
 )
 from agent.graph.state import AgentState
 
+
+_WORKER_NODES = {"research", "data", "general"}
+
+
+def _route_after_supervisor(state: AgentState) -> str:
+    """FINISH 后根据已参与的不同 Worker 数量决定是否聚合。"""
+    next_target = route_from_supervisor(state)
+    if next_target != "end":
+        return next_target
+
+    distinct_workers = set(state.get("route_history") or []) & _WORKER_NODES
+    return "synthesize" if len(distinct_workers) >= 2 else "end"
 
 def _build_graph():
     from langgraph.graph import END, START, StateGraph
@@ -25,22 +39,26 @@ def _build_graph():
     graph.add_node("research", research_node)
     graph.add_node("data", data_node)
     graph.add_node("general", general_node)
+    graph.add_node("synthesize", synthesize_node)
 
     graph.add_edge(START, "supervisor")
     graph.add_conditional_edges(
         "supervisor",
-        route_from_supervisor,
+        _route_after_supervisor,
         {
             "research": "research",
             "data": "data",
             "general": "general",
+            "synthesize": "synthesize",
             "end": END,
         },
     )
 
-    # Worker 完成后直接结束（不再循环回 supervisor）
+    # Worker 完成后回到 Supervisor（循环入口；是否结束由 Supervisor 的 next_agent 决定）
     for worker in ("research", "data", "general"):
-        graph.add_edge(worker, END)
+        graph.add_edge(worker, "supervisor")
+
+    graph.add_edge("synthesize", END)
 
     return graph.compile()
 

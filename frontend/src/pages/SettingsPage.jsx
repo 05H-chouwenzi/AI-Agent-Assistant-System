@@ -10,7 +10,7 @@ export default function SettingsPage() {
         <div className="page-body">
           <div className="section-card">
             <h3>LLM 配置</h3>
-            <div className="setting-row"><span>模型</span><span className="setting-value">qwen-plus</span></div>
+            <div className="setting-row"><span>模型</span><span className="setting-value">qwen3.5-flash</span></div>
             <div className="setting-row"><span>Base URL</span><span className="setting-value">https://dashscope.aliyuncs.com/compatible-mode/v1</span></div>
           </div>
           <div className="section-card" style={{marginTop:"16px"}}>

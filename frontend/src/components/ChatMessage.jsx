@@ -7,7 +7,7 @@ export default function ChatMessage({ message, thinkingStatus }) {
 
   return (
     <div className={`message${isUser ? " message-user" : " message-ai"}`}>
-      <div className="message-avatar">{isUser ? "👤" : ""}</div>
+      <div className="message-avatar">{isUser ? "👤" : "E"}</div>
       <div className="message-content">
         {!isUser && thinkingStatus && (
           <div className="thinking-status">

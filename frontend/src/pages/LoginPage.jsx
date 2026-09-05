@@ -86,10 +86,11 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="off">
           <div className="input-group">
             <input
               placeholder="用户名"
+              autoComplete="off"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoFocus
@@ -99,6 +100,7 @@ export default function LoginPage() {
             <input
               type={showPw ? "text" : "password"}
               placeholder="密码"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />

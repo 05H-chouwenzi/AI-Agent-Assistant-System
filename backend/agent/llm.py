@@ -1,6 +1,6 @@
 """LangChain LLM 配置 —— 统一 LLM 获取入口（缓存实例，避免每次重建）
 
-支持 DeepSeek、DashScope 等 OpenAI 兼容 API。
+支持智谱 GLM、DeepSeek、DashScope 等 OpenAI 兼容 API。
 通过 .env 中的 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL 配置。
 """
 from langchain_openai import ChatOpenAI
@@ -13,7 +13,7 @@ _llm_streaming_instance: ChatOpenAI | None = None
 def get_llm(*, streaming: bool = True) -> ChatOpenAI:
     """获取 LangChain ChatOpenAI 实例（缓存复用，避免每次重建）
 
-    支持 DeepSeek、DashScope 等任何 OpenAI 兼容 API。
+    支持智谱 GLM、DeepSeek、DashScope 等任何 OpenAI 兼容 API。
     Args:
         streaming: 是否启用流式输出
     Returns:
