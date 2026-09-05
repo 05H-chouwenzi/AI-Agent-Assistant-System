@@ -29,8 +29,12 @@ Thumbs.db
 # Docker runtime
 mysql_data/
 
-# Upload test files
-backend/uploads/
+# Uploaded files remain out of source control; allow the seeded knowledge docs.
+backend/uploads/*
+!backend/uploads/[1-9]_*.txt
+!backend/uploads/1[0-9]_*.txt
+!backend/uploads/2[0-9]_*.txt
+!backend/uploads/30_*.txt
 
 # Vector index data (auto-generated)
 backend/rag/data/vector_index_shared/*.pkl
