@@ -108,24 +108,16 @@ export function ChatProvider({ children }) {
 
     const token = localStorage.getItem("token");
     let aiContent = "";
-    let pendingTokens = "";
-    let flushTimer = null;
     let clientStreamDebugCount = 0;
     let lastClientTokenAt = null;
 
-    const flushPendingTokens = () => {
-      if (flushTimer) {
-        clearTimeout(flushTimer);
-        flushTimer = null;
-      }
-      if (!pendingTokens) return;
-
-      aiContent += pendingTokens;
-      pendingTokens = "";
+    const finalizeStreaming = (finalContent = aiContent) => {
+      if (!finalContent) return;
       setStreamingContent(aiContent);
       setMessages((prev) =>
-        prev.map((m) => m.id === aiMsgId ? { ...m, content: aiContent } : m)
+        prev.map((m) => m.id === aiMsgId ? { ...m, content: finalContent } : m)
       );
+      setStreamingContent("");
     };
 
     // ── WebSocket 连接 ──
@@ -148,16 +140,9 @@ export function ChatProvider({ children }) {
               lastClientTokenAt = receivedAt;
             }
 
-            if (!aiContent && !pendingTokens) {
-              pendingTokens += data.content;
-              flushPendingTokens();
-              break;
-            }
-
-            pendingTokens += data.content;
-            if (!flushTimer) {
-              flushTimer = setTimeout(flushPendingTokens, 35);
-            }
+            aiContent += data.content;
+            aiMsg.content = aiContent;
+            setStreamingContent(aiContent);
             break;
           }
 
@@ -177,13 +162,8 @@ export function ChatProvider({ children }) {
             break;
 
           case "done": {
-            flushPendingTokens();
             const finalContent = data.content || aiContent;
-            if (finalContent) {
-              setMessages((prev) =>
-                prev.map((m) => m.id === aiMsgId ? { ...m, content: finalContent } : m)
-              );
-            }
+            finalizeStreaming(finalContent);
             setLoading(false);
             setIsThinking(false);
             setThinkingStatus("");
@@ -193,17 +173,7 @@ export function ChatProvider({ children }) {
           }
 
           case "error":
-            if (flushTimer) {
-              clearTimeout(flushTimer);
-              flushTimer = null;
-            }
-            pendingTokens = "";
-            setMessages((prev) =>
-              prev.map((m) => m.id === aiMsgId
-                ? { ...m, content: data.content || "服务异常，请稍后重试" }
-                : m
-              )
-            );
+            finalizeStreaming(data.content || "服务异常，请稍后重试");
             setLoading(false);
             setIsThinking(false);
             setThinkingStatus("");
@@ -217,12 +187,7 @@ export function ChatProvider({ children }) {
       },
       (err) => {
         // WebSocket 连接错误
-        setMessages((prev) =>
-          prev.map((m) => m.id === aiMsgId
-            ? { ...m, content: "连接中断，请检查网络后重试" }
-            : m
-          )
-        );
+        finalizeStreaming("连接中断，请检查网络后重试");
         setLoading(false);
         setIsThinking(false);
         setThinkingStatus("");
@@ -231,7 +196,7 @@ export function ChatProvider({ children }) {
     );
 
     // 保存 WebSocket 引用以便取消
-    abortRef.current = { ws, aiMsgId, flushPendingTokens };
+    abortRef.current = { ws, aiMsgId, finalizeStreaming };
 
     // 发送消息
     sendChatMessage(ws, question);
@@ -239,8 +204,8 @@ export function ChatProvider({ children }) {
 
   const cancelStream = useCallback(() => {
     const current = abortRef.current;
-    if (current?.flushPendingTokens) {
-      current.flushPendingTokens();
+    if (current?.finalizeStreaming) {
+      current.finalizeStreaming();
     }
     if (current?.ws) {
       current.ws.close();
