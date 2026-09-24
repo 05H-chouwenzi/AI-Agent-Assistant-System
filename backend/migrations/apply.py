@@ -11,26 +11,27 @@ from sqlalchemy import text
 
 
 MIGRATIONS_DIR = Path(__file__).parent
+MIGRATIONS = ["002_fix_system_logs_columns.sql", "003_knowledge_multimodal.sql"]
 
 
 def run():
-    sql_file = MIGRATIONS_DIR / "001_add_indexes.sql"
-    print(f"正在执行迁移: {sql_file.name} ...")
+    for migration_name in MIGRATIONS:
+        sql_file = MIGRATIONS_DIR / migration_name
+        if not sql_file.exists():
+            continue
+        print(f"正在执行迁移: {sql_file.name} ...")
 
-    with engine.connect() as conn:
-        sql = sql_file.read_text(encoding="utf-8")
-        # 拆分为独立语句，忽略注释行和空行
-        statements = [
-            s.strip()
-            for s in sql.split(";")
-            if s.strip() and not s.strip().startswith("--")
-        ]
-        for stmt in statements:
-            stmt_clean = stmt.strip()
-            if stmt_clean:
-                print(f"  执行: {stmt_clean[:80]}...")
-                conn.execute(text(stmt_clean))
-        conn.commit()
+        with engine.connect() as conn:
+            statements = [
+                line.strip().rstrip(";")
+                for line in sql_file.read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.strip().startswith("--")
+            ]
+            for statement in statements:
+                if statement:
+                    print(f"  执行: {statement[:80]}...")
+                    conn.execute(text(statement))
+            conn.commit()
 
     print("迁移完成!")
 

@@ -80,7 +80,7 @@ _SKIP_WORDS = {
 class FastRouter:
     """快速规则路由器 —— 零 LLM 调用，毫秒级响应"""
 
-    def route(self, question: str) -> Optional[FastRouteMatch]:
+    def route(self, question: str, *, has_attachments: bool = False) -> Optional[FastRouteMatch]:
         """尝试规则匹配
 
         按优先级依次尝试所有规则，返回第一个匹配成功的结果。
@@ -92,6 +92,12 @@ class FastRouter:
             匹配成功 → FastRouteMatch
             匹配失败 → None（降级到 Planner）
         """
+        if has_attachments:
+            # Attachment requests always keep Supervisor/Worker context handling;
+            # a short text like "你好" next to a file must not bypass the graph.
+            logger.info("FastRouter: attachment request → bypass direct tool route")
+            return None
+
         q = question.strip()
 
         # 优先级从高到低依次匹配（仅保留无需业务数据表的通用规则）

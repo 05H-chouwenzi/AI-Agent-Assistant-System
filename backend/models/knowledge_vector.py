@@ -7,7 +7,7 @@
 """
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, Integer, String, Text, Float, Index
+from sqlalchemy import JSON, Column, Integer, String, Text, Float, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
@@ -35,6 +35,9 @@ class KnowledgeVector(Base, TimestampMixin):
     source: Mapped[str] = mapped_column(
         String(500), nullable=True, comment="来源文件名/URL",
     )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, comment="统一 chunk metadata（FAISS 对应 documents.pkl）",
+    )
     score: Mapped[float] = mapped_column(
         Float, nullable=True, comment="检索时的相关度得分（不持久化）",
     )
@@ -51,6 +54,7 @@ class KnowledgeVector(Base, TimestampMixin):
             "chunk_index": self.chunk_index,
             "content": self.content,
             "source": self.source,
+            "metadata_json": self.metadata_json,
             "score": self.score,
         }
 

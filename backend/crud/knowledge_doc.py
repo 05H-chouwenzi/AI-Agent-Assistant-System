@@ -35,9 +35,12 @@ def list_docs(
     db: Session,
     page: int = 1,
     page_size: int = 20,
+    user_id: int | None = None,
 ) -> tuple[int, list[KnowledgeDoc]]:
     """分页获取文档列表，返回 (总数, 当前页列表)"""
     q = db.query(KnowledgeDoc)
+    if user_id is not None:
+        q = q.filter(KnowledgeDoc.user_id == user_id)
     numeric_prefix = cast(func.substring_index(KnowledgeDoc.title, "_", 1), Integer)
     total = q.count()
     items = (

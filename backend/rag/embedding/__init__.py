@@ -59,3 +59,21 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
             all_embeddings[start + item.index] = item.embedding
 
     return all_embeddings
+
+
+async def aembed_texts(texts: list[str]) -> list[list[float]]:
+    """Batch async embeddings using the same text-embedding-v3 model."""
+    BATCH_SIZE = 10
+    all_embeddings: list[list[float] | None] = [None] * len(texts)
+    client = _get_async_client()
+    for start in range(0, len(texts), BATCH_SIZE):
+        batch = texts[start:start + BATCH_SIZE]
+        resp = await client.embeddings.create(
+            model="text-embedding-v3",
+            input=batch,
+        )
+        for item in resp.data:
+            all_embeddings[start + item.index] = item.embedding
+    if any(embedding is None for embedding in all_embeddings):
+        raise RuntimeError("Embedding response missing items")
+    return all_embeddings

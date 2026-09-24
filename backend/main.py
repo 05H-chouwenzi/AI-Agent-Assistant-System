@@ -45,6 +45,7 @@ from models.system_log import SystemLog
 from api.chat import router as chat_router
 from api.chat_stream import router as chat_stream_router
 from api.ws_chat import router as ws_router
+from api.chat_attachments import router as chat_attachment_router
 from router.conversations import router as conv_router
 from router.knowledge import router as knowledge_router
 from router.logs import router as logs_router
@@ -78,11 +79,31 @@ async def lifespan(app: FastAPI):
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE conversations ADD COLUMN tenant_id INT DEFAULT NULL"))
                 conn.commit()
+        doc_columns = [c["name"] for c in inspector.get_columns("knowledge_docs")]
+        if "error_message" not in doc_columns:
+            print("迁移：给 knowledge_docs 加 error_message 列...")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE knowledge_docs ADD COLUMN error_message VARCHAR(1000) NULL"))
+                conn.commit()
+        if inspector.has_table("knowledge_vectors"):
+            vector_columns = [c["name"] for c in inspector.get_columns("knowledge_vectors")]
+            if "metadata_json" not in vector_columns:
+                print("迁移：给 knowledge_vectors 加 metadata_json 列...")
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE knowledge_vectors ADD COLUMN metadata_json JSON NULL"))
+                    conn.commit()
     except Exception as e:
         print(f"迁移警告（可忽略）: {e}")
 
     print("数据库表创建完成")
     register_default_tools()
+    try:
+        from rag.vector_store import backfill_legacy_metadata
+        migrated = backfill_legacy_metadata()
+        if migrated:
+            print(f"FAISS 旧 metadata 兼容迁移: {migrated} chunks")
+    except Exception as exc:
+        print(f"FAISS 旧 metadata 兼容迁移警告: {exc}")
     warm_up_agents()
     print("默认工具注册完成")
     yield
@@ -134,6 +155,7 @@ app.include_router(user_router)
 app.include_router(chat_router)
 app.include_router(chat_stream_router)
 app.include_router(ws_router)
+app.include_router(chat_attachment_router)
 app.include_router(conv_router)
 app.include_router(knowledge_router)
 app.include_router(logs_router)

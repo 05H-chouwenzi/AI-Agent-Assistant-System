@@ -15,6 +15,7 @@ class AgentState(TypedDict):
     使用 LangChain BaseMessage 管理对话消息，支持 add_messages 归约。
     """
     messages: Annotated[list[BaseMessage], add_messages]
+    attachments: list[dict]                  # 当前请求的临时附件元数据
     tenant_id: int
     user_id: int
     next_agent: str                          # "research" | "data" | "general" | "FINISH"

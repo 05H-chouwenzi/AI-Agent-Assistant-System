@@ -29,7 +29,10 @@ class KnowledgeDoc(Base,TimestampMixin):
     )
     status:Mapped[str]=mapped_column(
         String(20),default="pending",
-        comment="状态:pending/processing/completed/failed"
+        comment="状态:pending/processing/embedding/completed/failed"
+    )
+    error_message:Mapped[str | None]=mapped_column(
+        String(1000),nullable=True,comment="解析/Embedding失败原因"
     )
 
     owner = relationship("User", backref="knowledge_docs")

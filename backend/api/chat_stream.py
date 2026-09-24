@@ -24,6 +24,13 @@ from tools.formatter import format_tool_result
 from logs.operation_logger import async_log_chat_question
 from logs.logger import logger
 from agent.monitor import PerformanceMonitor
+from services.chat_attachments import (
+    AttachmentError,
+    build_chat_message,
+    cleanup_attachments,
+    load_attachments,
+)
+from utils.request_context import set_current_user_id, reset_current_user_id
 
 router = APIRouter(prefix="/api/chat", tags=["聊天"])
 _DEFAULT_TITLE = "新对话"
@@ -35,6 +42,7 @@ _metrics_logger = logging.getLogger("uvicorn.error")
 class ChatStreamRequest(BaseModel):
     question: str
     conversation_id: int = 0
+    attachments: list[str] = []
 
 
 def sse_event(event_type: str, content, ensure_ascii=False) -> str:
@@ -43,7 +51,15 @@ def sse_event(event_type: str, content, ensure_ascii=False) -> str:
 
 def _message_text(message) -> str:
     content = getattr(message, "content", "")
-    return content if isinstance(content, str) else str(content)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            item.get("text", "")
+            for item in content
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+        )
+    return str(content)
 
 
 _SSE_KEEPALIVE_INTERVAL_SECONDS = 15.0
@@ -95,8 +111,16 @@ async def chat_stream(
     _tenant_ok: User = Depends(require_tenant_access),
 ):
     question = req.question.strip()
-    if not question:
+    try:
+        attachments = load_attachments(req.attachments, user.id)
+    except AttachmentError as exc:
+        return StreamingResponse(
+            sse_event("error", str(exc)),
+            media_type="text/event-stream",
+        )
+    if not question and not attachments:
         return StreamingResponse(sse_event("error", "消息不能为空"), media_type="text/event-stream")
+    display_question = question or "（发送了聊天附件）"
 
     async def event_stream():
         monitor = PerformanceMonitor()
@@ -105,11 +129,12 @@ async def chat_stream(
         last_event_perf_ns = stream_started_perf_ns
         last_event_kind = ""
         last_event_node = ""
+        context_token = set_current_user_id(user.id)
         try:
-            # FastRouter 旁路：零 LLM 调用处理简单请求。
+            # FastRouter 继续处理纯文本；带附件请求进入 Supervisor/Worker。
             fast_router_start = time.perf_counter_ns()
             _fast_router = FastRouter()
-            _match = _fast_router.route(question)
+            _match = _fast_router.route(question, has_attachments=bool(attachments))
             monitor.metrics.node_time_ms["fast_router"] += (
                 time.perf_counter_ns() - fast_router_start
             ) / 1_000_000
@@ -133,10 +158,10 @@ async def chat_stream(
             conv_id = req.conversation_id
             async with AsyncSessionLocal() as db:
                 if not conv_id or conv_id == 0:
-                    conv = await create_conversation(db, question[:30], user.id, user.tenant_id)
+                    conv = await create_conversation(db, display_question[:30], user.id, user.tenant_id)
                     conv_id = conv.id
                 past = (await get_conversation_messages(db, conv_id))[-20:]
-                await create_message(db, conv_id, "user", question)
+                await create_message(db, conv_id, "user", display_question)
 
             history_messages = []
             for m in past:
@@ -145,8 +170,10 @@ async def chat_stream(
                 elif m.role == "assistant":
                     history_messages.append(AIMessage(content=m.content))
 
+            user_message = await build_chat_message(question, attachments)
             state = AgentState(
-                messages=[*history_messages, HumanMessage(content=question)],
+                messages=[*history_messages, user_message],
+                attachments=attachments,
                 tenant_id=user.tenant_id,
                 user_id=user.id,
                 next_agent="",
@@ -164,7 +191,7 @@ async def chat_stream(
             _metrics_logger.info(
                 "[SSE_STREAM_START] stream_start=%d question_len=%d conversation_id=%d",
                 stream_started_epoch_ms,
-                len(question),
+                len(display_question),
                 conv_id,
             )
             async for event in _iter_graph_events_with_keepalive(
@@ -256,7 +283,7 @@ async def chat_stream(
 
             asyncio.create_task(async_log_chat_question(
                 user_id=user.id,
-                question=question,
+                question=display_question,
                 task_type="direct",
                 is_stream=True,
                 conversation_id=conv_id,
@@ -268,7 +295,7 @@ async def chat_stream(
                 await create_message(db, conv_id, "assistant", full_answer)
                 conv = await get_conversation(db, conv_id, user.id)
             if conv and (not conv.title or conv.title == _DEFAULT_TITLE):
-                await update_conversation_title(db, conv_id, question[:30], user.id)
+                await update_conversation_title(db, conv_id, display_question[:30], user.id)
 
             yield sse_event("done", {"content": full_answer, "conversation_id": conv_id})
             monitor.finish()
@@ -316,6 +343,9 @@ async def chat_stream(
             monitor.finish()
             _metrics_logger.info("\n%s", monitor.get_metrics())
             yield sse_event("error", f"系统错误：{str(e)}")
+        finally:
+            reset_current_user_id(context_token)
+            cleanup_attachments(attachments)
 
     return StreamingResponse(
         event_stream(),

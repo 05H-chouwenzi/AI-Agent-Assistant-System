@@ -15,6 +15,11 @@ export async function listDocs(params = {}) {
   return res.data;
 }
 
+export async function getDocStatus(id) {
+  const res = await api.get(`/api/knowledge/docs/${id}`);
+  return res.data;
+}
+
 export async function deleteDoc(id) {
   const res = await api.delete(`/api/knowledge/docs/${id}`);
   return res.data;

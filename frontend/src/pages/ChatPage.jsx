@@ -4,6 +4,7 @@ import ChatMessage from "../components/ChatMessage";
 import ChatInput from "../components/ChatInput";
 import AppSidebar from "../components/AppSidebar";
 import { useChat } from "../hooks/useChat";
+import { uploadChatAttachment } from "../api/chat";
 
 const QUICK_ACTIONS = [
   {
@@ -94,10 +95,15 @@ export default function ChatPage() {
     }
   }
 
-  function handleFileChange(e) {
+  async function handleFileChange(e) {
     const file = e.target.files?.[0];
     if (file) {
-      send(`请帮我分析上传的 PDF 文件：${file.name}`);
+      try {
+        const attachment = await uploadChatAttachment(file);
+        send(`请帮我分析上传的 PDF 文件：${file.name}`, [attachment]);
+      } catch {
+        alert("PDF 上传失败，请重试");
+      }
       e.target.value = "";
     }
   }

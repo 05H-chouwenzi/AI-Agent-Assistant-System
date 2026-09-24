@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import AppSidebar from "../components/AppSidebar";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FileIcon from "../components/FileIcon";
-import { uploadDoc, listDocs, deleteDoc } from "../api/knowledge";
+import { uploadDoc, listDocs, deleteDoc, getDocStatus } from "../api/knowledge";
+import { isSupportedAttachment, formatFileSize } from "../utils/attachments";
+
+const DOCS_PAGE_SIZE = 10;
 
 export default function KnowledgePage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -12,6 +15,7 @@ export default function KnowledgePage() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [uploadItems, setUploadItems] = useState([]);
   const fileRef = useRef();
   const [confirm, setConfirm] = useState({ open: false, id: null, title: "" });
 
@@ -22,7 +26,7 @@ export default function KnowledgePage() {
   async function fetchDocs() {
     setLoading(true);
     try {
-      const data = await listDocs({ page, page_size: 20 });
+      const data = await listDocs({ page, page_size: DOCS_PAGE_SIZE });
       setDocs(data.items);
       setTotal(data.total);
     } catch {
@@ -36,20 +40,67 @@ export default function KnowledgePage() {
     setTimeout(() => setMsg(null), 3000);
   }
 
-  async function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  function setUploadItem(key, patch) {
+    setUploadItems((items) => items.map((item) => (item.key === key ? { ...item, ...patch } : item)));
+  }
 
-    setUploading(true);
+  async function pollStatus(key, id) {
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      const status = await getDocStatus(id);
+      setUploadItem(key, { status: status.status, error: status.error_message });
+      if (status.status === "completed" || status.status === "failed") return status;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    return null;
+  }
+
+  async function uploadOne(file) {
+    const key = `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`;
+    if (!isSupportedAttachment(file)) {
+      setUploadItems((items) => [...items, {
+        key,
+        name: file.name,
+        size: file.size,
+        status: "failed",
+        error: "不支持的文件类型",
+      }]);
+      return;
+    }
+    setUploadItems((items) => [...items, {
+      key,
+      name: file.name,
+      size: file.size,
+      status: "uploading",
+    }]);
     try {
       const res = await uploadDoc(file);
-      showMsg(`${res.title} 上传成功（${res.chunks} 个文本块）`);
-      setPage(1);
+      setUploadItem(key, { status: res.status || "processing" });
+      const finalStatus = await pollStatus(key, res.id);
+      setUploadItem(key, {
+        status: finalStatus?.status || "failed",
+        error: finalStatus?.error_message || (finalStatus ? "" : "处理超时"),
+      });
       await fetchDocs();
     } catch (err) {
-      showMsg(err.response?.data?.detail || "上传失败", "error");
+      setUploadItem(key, {
+        status: "failed",
+        error: err.response?.data?.detail || "上传失败",
+      });
     }
+  }
+
+  async function handleFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    setUploading(true);
+    await Promise.all(files.map(uploadOne));
     setUploading(false);
+    setPage(1);
+    await fetchDocs();
+  }
+
+  async function handleFileChange(e) {
+    await handleFiles(e.target.files);
     e.target.value = "";
   }
 
@@ -69,7 +120,7 @@ export default function KnowledgePage() {
     }
   }
 
-  const totalPages = Math.ceil(total / 20);
+  const totalPages = Math.ceil(total / DOCS_PAGE_SIZE);
 
   return (
     <AppSidebar collapsed={!sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}>
@@ -88,24 +139,13 @@ export default function KnowledgePage() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={async (e) => {
               e.preventDefault();
-              const file = e.dataTransfer.files?.[0];
-              if (!file) return;
-              setUploading(true);
-              try {
-                const res = await uploadDoc(file);
-                showMsg(`${res.title} 上传成功（${res.chunks} 个文本块）`);
-                setPage(1);
-                await fetchDocs();
-              } catch (err) {
-                showMsg(err.response?.data?.detail || "上传失败", "error");
-              }
-              setUploading(false);
+              await handleFiles(e.dataTransfer.files);
             }}
           >
             <div className="upload-icon">{uploading ? "⏳" : "📄"}</div>
             <p>{uploading ? "正在上传并处理..." : "拖拽文件到此处上传，或点击选择文件"}</p>
             <p className="text-muted" style={{ fontSize: "13px", marginTop: "8px" }}>
-              支持 PDF · Word · Excel · PPT · Markdown · TXT · 图片(PNG/JPG)
+              支持 PDF · DOCX · PPTX · XLSX · XLS · CSV · MD · TXT · JSON · XML · JPG/JPEG/PNG/WEBP
             </p>
             <button className="upload-btn" disabled={uploading}>
               {uploading ? "处理中..." : "选择文件"}
@@ -113,11 +153,31 @@ export default function KnowledgePage() {
             <input
               ref={fileRef}
               type="file"
-              accept=".pdf,.txt,.md,.markdown,.docx,.xlsx,.xls,.pptx,.png,.jpg,.jpeg,.bmp,.tiff,.webp"
+              accept=".pdf,.docx,.pptx,.xlsx,.xls,.csv,.txt,.md,.json,.xml,.jpg,.jpeg,.png,.webp"
+              multiple
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
           </div>
+
+          {uploadItems.length > 0 && (
+            <div className="upload-items">
+              {uploadItems.map((item) => (
+                <div key={item.key} className="upload-item">
+                  <span className="upload-item-name">{item.name}</span>
+                  <span className="text-muted">{formatFileSize(item.size)}</span>
+                  <span className={`doc-status ${item.status}`}>
+                    {item.status === "uploading" && "上传中"}
+                    {item.status === "processing" && "解析中"}
+                    {item.status === "embedding" && "向量化中"}
+                    {item.status === "completed" && "已完成"}
+                    {item.status === "failed" && "失败"}
+                  </span>
+                  {item.error && <span className="upload-item-error">{item.error}</span>}
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="section-card" style={{ marginTop: "24px" }}>
             <h3>已上传文档（{total}）</h3>
@@ -136,7 +196,13 @@ export default function KnowledgePage() {
                         <FileIcon type={d.file_type} />
                       </span>
                       <span className="doc-title">{d.title}</span>
-                      <span className="doc-status completed">已完成</span>
+                      <span className={`doc-status ${d.status}`}>
+                        {d.status === "processing" && "解析中"}
+                        {d.status === "embedding" && "向量化中"}
+                        {d.status === "completed" && "已完成"}
+                        {d.status === "failed" && "失败"}
+                        {!["processing", "embedding", "completed", "failed"].includes(d.status) && d.status}
+                      </span>
                       <span className="doc-uploader" title="上传者">{d.uploader}</span>
                       <span className="doc-date">{d.created_at?.slice(0, 10)}</span>
                       <button className="doc-delete" onClick={() => handleDelete(d.id, d.title)}>

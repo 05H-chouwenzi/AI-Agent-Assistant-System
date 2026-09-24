@@ -22,6 +22,13 @@ from utils.auth import get_current_user, require_tenant_access
 from agent.workflow.graph import agent_graph
 from agent.graph.state import AgentState
 from agent.nodes.fast_router import FastRouter
+from services.chat_attachments import (
+    AttachmentError,
+    build_chat_message,
+    cleanup_attachments,
+    load_attachments,
+)
+from utils.request_context import set_current_user_id, reset_current_user_id
 from tools.tool_manager import get_tool_manager, register_default_tools
 from tools.formatter import format_tool_result
 from logs.operation_logger import async_log_chat_question
@@ -36,6 +43,7 @@ class ChatRequest(BaseModel):
     """聊天请求"""
     question: str
     conversation_id: int = 0
+    attachments: list[str] = []
 
 
 class ChatResponse(BaseModel):
@@ -91,97 +99,111 @@ async def chat_send(
 ):
     """用户发送消息 → 统一循环图处理 → 返回结果"""
     question = req.question.strip()
-    if not question:
-        raise HTTPException(status_code=400, detail="消息不能为空")
-
-    # ========== FastRouter 旁路：零 LLM 调用处理简单请求 ==========
-    _fast_router = FastRouter()
-    _match = _fast_router.route(question)
-    if _match and _match.is_final:
-        register_default_tools()
-        _manager = get_tool_manager()
-        _result = await _manager.aexecute(_match.tool_name, **_match.tool_args)
-        _fast_response = format_tool_result(_result, _match.tool_name)
-        response_data = {
-            "question": question,
-            "task_type": "fast_router",
-            "final_answer": _fast_response,
-        }
-        asyncio.create_task(async_log_chat_question(
-            user_id=current_user.id, question=question,
-            task_type="fast_router", is_stream=False,
-            conversation_id=req.conversation_id or None,
-            elapsed_ms=0, answer=_fast_response,
-        ))
-        await _save_messages(
-            req.conversation_id, question, _fast_response,
-            current_user.id, current_user.tenant_id,
-        )
-        return ChatResponse(**response_data)
-
-    history_messages = await _load_history_messages(req.conversation_id, current_user.id)
-    start = time.time()
-    elapsed_ms = 0
+    try:
+        attachments = load_attachments(req.attachments, current_user.id)
+    except AttachmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
-        # 构建新格式 state：使用 LangChain 消息
-        state = AgentState(
-            messages=[*history_messages, HumanMessage(content=question)],
-            tenant_id=current_user.tenant_id,
+        context_token = set_current_user_id(current_user.id)
+        if not question and not attachments:
+            raise HTTPException(status_code=400, detail="消息不能为空")
+
+        display_question = question or "（发送了聊天附件）"
+
+        # FastRouter 继续处理纯文本；带附件请求进入 Supervisor/Worker。
+        _fast_router = FastRouter()
+        _match = _fast_router.route(question, has_attachments=bool(attachments))
+        if _match and _match.is_final:
+            register_default_tools()
+            _manager = get_tool_manager()
+            _result = await _manager.aexecute(_match.tool_name, **_match.tool_args)
+            _fast_response = format_tool_result(_result, _match.tool_name)
+            response_data = {
+                "question": display_question,
+                "task_type": "fast_router",
+                "final_answer": _fast_response,
+            }
+            asyncio.create_task(async_log_chat_question(
+                user_id=current_user.id, question=display_question,
+                task_type="fast_router", is_stream=False,
+                conversation_id=req.conversation_id or None,
+                elapsed_ms=0, answer=_fast_response,
+            ))
+            await _save_messages(
+                req.conversation_id, display_question, _fast_response,
+                current_user.id, current_user.tenant_id,
+            )
+            return ChatResponse(**response_data)
+
+        history_messages = await _load_history_messages(req.conversation_id, current_user.id)
+        start = time.time()
+        elapsed_ms = 0
+
+        try:
+            # 构建新格式 state：使用 LangChain 消息
+            user_message = await build_chat_message(question, attachments)
+            state = AgentState(
+                messages=[*history_messages, user_message],
+                attachments=attachments,
+                tenant_id=current_user.tenant_id,
+                user_id=current_user.id,
+                next_agent="",
+                route_history=[],
+                step_count=0,
+                last_worker="",
+            )
+
+            result = await agent_graph.ainvoke(state)
+
+            elapsed_ms = int((time.time() - start) * 1000)
+
+            # 从 messages 中提取最后一条 AI 消息作为最终回答
+            last_msg = result["messages"][-1]
+            if isinstance(last_msg, AIMessage):
+                final_answer = last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content)
+            else:
+                final_answer = str(last_msg.content) if hasattr(last_msg, "content") else str(last_msg)
+
+            task_type = _infer_task_type(result)
+
+            if not final_answer:
+                logger.warning(f"Graph 未产出 final_answer, question={question[:50]}")
+                final_answer = "抱歉，我暂时无法回答这个问题。"
+
+            response_data = {
+                "question": display_question,
+                "task_type": task_type,
+                "final_answer": final_answer,
+            }
+
+        except Exception as e:
+            elapsed_ms = int((time.time() - start) * 1000)
+            logger.error(f"chat_send 异常: {e}", exc_info=True)
+            response_data = {
+                "question": display_question,
+                "task_type": "error",
+                "final_answer": f"系统错误：{str(e)}",
+            }
+
+        # Fire-and-forget 操作日志
+        asyncio.create_task(async_log_chat_question(
             user_id=current_user.id,
-            next_agent="",
-            route_history=[],
-            step_count=0,
-            last_worker="",
+            question=display_question,
+            task_type=response_data.get("task_type", "unknown"),
+            is_stream=False,
+            conversation_id=req.conversation_id or None,
+            elapsed_ms=elapsed_ms,
+            answer=response_data.get("final_answer", ""),
+        ))
+
+        await _save_messages(
+            req.conversation_id, display_question,
+            response_data.get("final_answer", ""),
+            current_user.id, current_user.tenant_id,
         )
 
-        result = await agent_graph.ainvoke(state)
-
-        elapsed_ms = int((time.time() - start) * 1000)
-
-        # 从 messages 中提取最后一条 AI 消息作为最终回答
-        last_msg = result["messages"][-1]
-        if isinstance(last_msg, AIMessage):
-            final_answer = last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content)
-        else:
-            final_answer = str(last_msg.content) if hasattr(last_msg, "content") else str(last_msg)
-
-        task_type = _infer_task_type(result)
-
-        if not final_answer:
-            logger.warning(f"Graph 未产出 final_answer, question={question[:50]}")
-            final_answer = "抱歉，我暂时无法回答这个问题。"
-
-        response_data = {
-            "question": question,
-            "task_type": task_type,
-            "final_answer": final_answer,
-        }
-
-    except Exception as e:
-        elapsed_ms = int((time.time() - start) * 1000)
-        logger.error(f"chat_send 异常: {e}", exc_info=True)
-        response_data = {
-            "question": question,
-            "task_type": "error",
-            "final_answer": f"系统错误：{str(e)}",
-        }
-
-    # Fire-and-forget 操作日志
-    asyncio.create_task(async_log_chat_question(
-        user_id=current_user.id,
-        question=question,
-        task_type=response_data.get("task_type", "unknown"),
-        is_stream=False,
-        conversation_id=req.conversation_id or None,
-        elapsed_ms=elapsed_ms,
-        answer=response_data.get("final_answer", ""),
-    ))
-
-    await _save_messages(
-        req.conversation_id, question,
-        response_data.get("final_answer", ""),
-        current_user.id, current_user.tenant_id,
-    )
-
-    return ChatResponse(**response_data)
+        return ChatResponse(**response_data)
+    finally:
+        reset_current_user_id(context_token)
+        cleanup_attachments(attachments)

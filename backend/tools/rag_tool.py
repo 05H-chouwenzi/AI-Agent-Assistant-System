@@ -4,7 +4,9 @@ RAG Tool —— 企业内部知识库检索工具（共享）
 import re
 import time
 import asyncio
+from sqlalchemy import text as sa_text
 from tools.base_tool import BaseTool, ToolResult
+from utils.request_context import get_current_user_id
 
 # 文件数量类问题：直接统计 knowledge_docs，而不是做语义检索
 _COUNT_PATTERNS = [
@@ -25,15 +27,23 @@ def _is_count_query(query: str) -> bool:
     return any(re.search(p, q) for p in _COUNT_PATTERNS)
 
 
-def _count_knowledge_docs() -> dict:
+def _count_knowledge_docs(user_id: int | None = None) -> dict:
     """统计知识库文件数量（knowledge_docs 表），并附带标题列表"""
     from database.session import engine
-    from sqlalchemy import text as sa_text
     try:
         with engine.connect() as conn:
-            total = conn.execute(sa_text("SELECT COUNT(*) FROM knowledge_docs")).scalar()
+            if user_id is None:
+                return {"文件总数": -1, "错误": "用户上下文缺失"}
+            total = conn.execute(
+                sa_text("SELECT COUNT(*) FROM knowledge_docs WHERE user_id = :user_id"),
+                {"user_id": user_id},
+            ).scalar()
             rows = conn.execute(
-                sa_text("SELECT title FROM knowledge_docs ORDER BY id DESC LIMIT 20")
+                sa_text(
+                    "SELECT title FROM knowledge_docs WHERE user_id = :user_id "
+                    "ORDER BY id DESC LIMIT 20"
+                ),
+                {"user_id": user_id},
             ).fetchall()
         return {
             "文件总数": int(total or 0),
@@ -83,13 +93,17 @@ class RAGTool(BaseTool):
     def execute(self, **kwargs) -> ToolResult:
         query = kwargs.get("query", "").strip()
         top_k = min(kwargs.get("top_k", 5), 10)
+        user_id = get_current_user_id()
 
         if not query:
             return ToolResult(success=False, error="缺少查询参数", tool_name=self.name)
 
+        if user_id is None:
+            return ToolResult(success=False, error="知识库用户上下文缺失", tool_name=self.name)
+
         # 文件/文档数量类问题：直接统计 knowledge_docs 表
         if _is_count_query(query):
-            count_info = _count_knowledge_docs()
+            count_info = _count_knowledge_docs(user_id)
             if count_info.get("文件总数", -1) >= 0:
                 total = count_info["文件总数"]
                 titles = count_info.get("文件列表", [])
@@ -106,7 +120,7 @@ class RAGTool(BaseTool):
         try:
             from rag.retriever import retrieve
 
-            docs = retrieve(query, top_k=top_k)
+            docs = retrieve(query, top_k=top_k, user_id=user_id)
 
             if not docs:
                 return ToolResult(
@@ -117,11 +131,24 @@ class RAGTool(BaseTool):
 
             formatted = []
             for i, doc in enumerate(docs, 1):
+                metadata = doc.get("metadata") or {}
                 formatted.append({
                     "序号": i,
                     "相关度": doc.get("score", 0),
                     "来源": doc.get("source", "未知"),
                     "内容": doc.get("content", "")[:500],
+                    "内容类型": metadata.get("content_type") or doc.get("content_type") or "text",
+                    "元数据": {
+                        "file_id": metadata.get("file_id") or doc.get("file_id"),
+                        "filename": metadata.get("filename") or metadata.get("source"),
+                        "content_type": metadata.get("content_type") or doc.get("content_type"),
+                        "page_number": metadata.get("page_number") or doc.get("page_number"),
+                        "slide_number": metadata.get("slide_number") or doc.get("slide_number"),
+                        "sheet_name": metadata.get("sheet_name") or doc.get("sheet_name"),
+                        "section_title": metadata.get("section_title") or doc.get("section_title"),
+                        "heading": metadata.get("heading") or doc.get("heading"),
+                        "image_reference": metadata.get("image_reference") or metadata.get("image_path"),
+                    },
                 })
 
             elapsed = (time.time() - start) * 1000
@@ -141,13 +168,17 @@ class RAGTool(BaseTool):
         """异步版本：使用 AsyncOpenAI embedding，真正不阻塞事件循环"""
         query = kwargs.get("query", "").strip()
         top_k = min(kwargs.get("top_k", 5), 10)
+        user_id = get_current_user_id()
 
         if not query:
             return ToolResult(success=False, error="缺少查询参数", tool_name=self.name)
 
+        if user_id is None:
+            return ToolResult(success=False, error="知识库用户上下文缺失", tool_name=self.name)
+
         # 文件/文档数量类问题：直接统计 knowledge_docs 表（无需 embedding）
         if _is_count_query(query):
-            count_info = await asyncio.to_thread(_count_knowledge_docs)
+            count_info = await asyncio.to_thread(_count_knowledge_docs, user_id)
             if count_info.get("文件总数", -1) >= 0:
                 total = count_info["文件总数"]
                 titles = count_info.get("文件列表", [])
@@ -164,7 +195,7 @@ class RAGTool(BaseTool):
         try:
             from rag.retriever import aretrieve
 
-            docs = await aretrieve(query, top_k=top_k)
+            docs = await aretrieve(query, top_k=top_k, user_id=user_id)
 
             if not docs:
                 return ToolResult(
@@ -175,11 +206,24 @@ class RAGTool(BaseTool):
 
             formatted = []
             for i, doc in enumerate(docs, 1):
+                metadata = doc.get("metadata") or {}
                 formatted.append({
                     "序号": i,
                     "相关度": doc.get("score", 0),
                     "来源": doc.get("source", "未知"),
                     "内容": doc.get("content", "")[:500],
+                    "内容类型": metadata.get("content_type") or doc.get("content_type") or "text",
+                    "元数据": {
+                        "file_id": metadata.get("file_id") or doc.get("file_id"),
+                        "filename": metadata.get("filename") or metadata.get("source"),
+                        "content_type": metadata.get("content_type") or doc.get("content_type"),
+                        "page_number": metadata.get("page_number") or doc.get("page_number"),
+                        "slide_number": metadata.get("slide_number") or doc.get("slide_number"),
+                        "sheet_name": metadata.get("sheet_name") or doc.get("sheet_name"),
+                        "section_title": metadata.get("section_title") or doc.get("section_title"),
+                        "heading": metadata.get("heading") or doc.get("heading"),
+                        "image_reference": metadata.get("image_reference") or metadata.get("image_path"),
+                    },
                 })
 
             elapsed = (time.time() - start) * 1000

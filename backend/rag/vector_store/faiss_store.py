@@ -81,19 +81,27 @@ def add_vectors(vectors: list[list[float]], documents: list[dict]):
     _invalidate_cache()
 
 
-def search(query_vec: list[float], top_k: int = 5) -> list[dict]:
+def search(query_vec: list[float], top_k: int = 5, user_id: int | None = None) -> list[dict]:
     index = _get_index()
     if index.ntotal == 0:
         return []
     arr = np.array([query_vec], dtype=np.float32)
     faiss.normalize_L2(arr)
-    scores, indices = index.search(arr, top_k)
+    search_width = min(index.ntotal, max(top_k * 5, 20))
+    scores, indices = index.search(arr, search_width)
     docs = _load_docs()
     results = []
     for score, idx in zip(scores[0], indices[0]):
         if idx == -1:
             continue
         doc = docs[idx]
+        doc_user_id = (doc.get("metadata") or {}).get("user_id")
+        if user_id is not None and doc_user_id != user_id:
+            continue
+        if user_id is not None and score <= 0:
+            continue
+        if len(results) >= top_k:
+            break
         results.append({"score": round(float(score), 4), **doc})
     return results
 
@@ -129,6 +137,77 @@ def remove_by_source(source: str) -> int:
     kept_docs = [doc for i, doc in enumerate(docs) if keep_mask[i]]
     _save_docs(kept_docs)
     # 写操作后清除缓存
+    _invalidate_cache()
+    return removed
+
+
+def backfill_legacy_metadata() -> int:
+    """Assign owners to FAISS records created before metadata isolation.
+
+    Legacy records used the KnowledgeDoc title as source. Unmatched records stay
+    hidden because returning them to every user would violate isolation.
+    """
+    docs = _load_docs()
+    if not docs or not any((doc.get("metadata") or {}).get("user_id") is None for doc in docs):
+        return 0
+    from database.session import SessionLocal
+    from models.knowledge_doc import KnowledgeDoc
+
+    db = SessionLocal()
+    changed = 0
+    try:
+        records = db.query(KnowledgeDoc).all()
+        by_title: dict[str, KnowledgeDoc] = {}
+        by_source: dict[str, KnowledgeDoc] = {}
+        for record in records:
+            by_title.setdefault(record.title, record)
+            if record.source:
+                by_source.setdefault(Path(record.source).name, record)
+        for doc in docs:
+            metadata = doc.setdefault("metadata", {})
+            if metadata.get("user_id") is not None:
+                continue
+            owner = by_title.get(doc.get("source", "")) or by_source.get(doc.get("source", ""))
+            if owner:
+                metadata["user_id"] = owner.user_id
+                metadata.setdefault("file_id", owner.id)
+                changed += 1
+        if changed:
+            _save_docs(docs)
+            _invalidate_cache()
+        return changed
+    finally:
+        db.close()
+
+def remove_by_file_id(file_id: int, source: str | None = None) -> int:
+    """Remove chunks for one KnowledgeDoc; source is the legacy-data fallback."""
+    index = _get_index()
+    ntotal = index.ntotal
+    if ntotal == 0:
+        return 0
+    docs = _load_docs()
+    if not docs:
+        return 0
+    all_vectors = np.zeros((ntotal, VECTOR_DIM), dtype=np.float32)
+    for i in range(ntotal):
+        all_vectors[i] = index.reconstruct(i)
+    keep_mask = np.ones(ntotal, dtype=bool)
+    for i, doc in enumerate(docs):
+        metadata = doc.get("metadata") or {}
+        if metadata.get("file_id") == file_id:
+            keep_mask[i] = False
+        elif metadata.get("user_id") is None and source and doc.get("source") == source:
+            keep_mask[i] = False
+    removed = int((~keep_mask).sum())
+    if removed == 0:
+        return 0
+    new_index = faiss.IndexFlatIP(VECTOR_DIM)
+    kept_vectors = all_vectors[keep_mask]
+    if len(kept_vectors) > 0:
+        faiss.normalize_L2(kept_vectors)
+        new_index.add(kept_vectors)
+    _save_index(new_index)
+    _save_docs([doc for i, doc in enumerate(docs) if keep_mask[i]])
     _invalidate_cache()
     return removed
 

@@ -14,7 +14,7 @@ import time
 from typing import Optional
 
 import numpy as np
-from sqlalchemy import create_event_listener, text as sa_text
+from sqlalchemy import inspect as sa_inspect, text as sa_text
 from sqlalchemy.orm import Session as SASession, sessionmaker
 
 from config.settings import (
@@ -51,6 +51,13 @@ def _get_session() -> SASession:
     with _engine.connect() as conn:
         conn.execute(sa_text("CREATE EXTENSION IF NOT EXISTS vector"))
         conn.commit()
+        # Existing pgvector deployments predate metadata isolation.
+        inspector = sa_inspect(conn)
+        if inspector.has_table("knowledge_vectors") and "metadata_json" not in {
+            column["name"] for column in inspector.get_columns("knowledge_vectors")
+        }:
+            conn.execute(sa_text("ALTER TABLE knowledge_vectors ADD COLUMN metadata_json JSON NULL"))
+            conn.commit()
     KnowledgeVector.metadata.create_all(bind=_engine)
 
     _SessionLocal = sessionmaker(bind=_engine)
@@ -76,6 +83,7 @@ def add_vectors(vectors: list[list[float]], documents: list[dict]):
                 content=doc.get("content", ""),
                 embedding=vec,
                 source=doc.get("source"),
+                metadata_json=doc.get("metadata"),
             ))
         session.add_all(rows)
         session.commit()
@@ -88,21 +96,32 @@ def add_vectors(vectors: list[list[float]], documents: list[dict]):
         session.close()
 
 
-def search(query_vec: list[float], top_k: int = 5) -> list[dict]:
+def search(query_vec: list[float], top_k: int = 5, user_id: int | None = None) -> list[dict]:
     """用余弦相似度检索 top_k 个文档"""
     session = _get_session()
     try:
         vec_str = "[" + ",".join(str(v) for v in query_vec) + "]"
+        ownership_filter = ""
+        params = {"query_vec": vec_str, "query_vec2": vec_str, "top_k": top_k}
+        if user_id is not None:
+            ownership_filter = (
+                "WHERE (metadata_json ->> 'user_id')::int = :user_id "
+                "OR (metadata_json IS NULL AND EXISTS ("
+                "SELECT 1 FROM knowledge_docs kd WHERE kd.id = knowledge_vectors.doc_id "
+                "AND kd.user_id = :user_id)) "
+            )
+            params["user_id"] = user_id
         sql = sa_text(
-            f"SELECT id, doc_id, chunk_index, content, source, "
+            f"SELECT id, doc_id, chunk_index, content, source, metadata_json, "
             f"1 - (embedding <=> :query_vec) AS score "
             f"FROM knowledge_vectors "
+            f"{ownership_filter}"
             f"ORDER BY embedding <=> :query_vec2 "
             f"LIMIT :top_k"
         )
         rows = session.execute(
             sql,
-            {"query_vec": vec_str, "query_vec2": vec_str, "top_k": top_k},
+            params,
         ).fetchall()
 
         results = []
@@ -113,7 +132,8 @@ def search(query_vec: list[float], top_k: int = 5) -> list[dict]:
                 "chunk_index": row[2],
                 "content": row[3],
                 "source": row[4],
-                "score": round(float(row[5]), 4),
+                "metadata": row[5],
+                "score": round(float(row[6]), 4),
             })
         return results
     except Exception as e:
@@ -146,6 +166,41 @@ def remove_by_source(source: str) -> int:
     except Exception as e:
         session.rollback()
         logger.error(f"pgvector 删除失败: {e}")
+        return 0
+    finally:
+        session.close()
+
+
+def remove_by_file_id(file_id: int, source: str | None = None) -> int:
+    """Delete chunks for one KnowledgeDoc; source is the legacy-data fallback."""
+    session = _get_session()
+    try:
+        metadata_ids = [
+            row.id for row in session.query(KnowledgeVector.id).filter(
+                KnowledgeVector.metadata_json["file_id"].astext == str(file_id)
+            ).all()
+        ]
+        legacy_ids = []
+        if source:
+            legacy_ids = [
+                row.id for row in session.query(KnowledgeVector.id).filter(
+                    KnowledgeVector.source == source,
+                    KnowledgeVector.doc_id == file_id,
+                ).all()
+            ]
+        ids = sorted(set(metadata_ids + legacy_ids))
+        if not ids:
+            return 0
+        deleted = (
+            session.query(KnowledgeVector)
+            .filter(KnowledgeVector.id.in_(ids))
+            .delete(synchronize_session=False)
+        )
+        session.commit()
+        return deleted
+    except Exception as e:
+        session.rollback()
+        logger.error(f"pgvector 按 file_id 删除失败: {e}")
         return 0
     finally:
         session.close()

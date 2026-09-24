@@ -57,16 +57,19 @@ def load_docx(path: str | Path) -> str:
 def load_xlsx(path: str | Path) -> str:
     """读取 Excel 文件，每个单元格内容用制表符/换行分隔"""
     wb = load_workbook(path, read_only=True, data_only=True)
-    lines = []
-    for sheet in wb.sheetnames:
-        ws = wb[sheet]
-        lines.append(f"【Sheet: {sheet}】")
-        for row in ws.iter_rows(values_only=True):
-            cells = [str(c) if c is not None else "" for c in row]
-            line = "\t".join(cells)
-            if line.strip():
-                lines.append(line)
-    return "\n".join(lines)
+    try:
+        lines = []
+        for sheet in wb.sheetnames:
+            ws = wb[sheet]
+            lines.append(f"【Sheet: {sheet}】")
+            for row in ws.iter_rows(values_only=True):
+                cells = [str(c) if c is not None else "" for c in row]
+                line = "\t".join(cells)
+                if line.strip():
+                    lines.append(line)
+        return "\n".join(lines)
+    finally:
+        wb.close()
 
 
 def load_pptx(path: str | Path) -> str:

@@ -1,102 +1,67 @@
-"""
-知识库路由 —— 上传文档 & 列表 & 删除（多用户隔离 + 分页）
-"""
-import shutil
+"""Knowledge-base upload, processing status, list, and delete."""
+import asyncio
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
-from database.session import get_db
-from models.user import User
-from utils.auth import get_current_user
-from rag.loader import load_document, IMAGE_SUFFIXES
-from rag.splitter import split_text
-from rag.embedding import embed_texts
-from rag.vector_store import add_vectors, count, remove_by_source
-from logs.operation_logger import OperationLogger, Actions
 from crud import knowledge_doc as doc_crud
+from database.session import get_db
+from logs.operation_logger import OperationLogger, Actions
+from models.user import User
+from rag.vector_store import count, remove_by_file_id
+from services.knowledge_files import process_knowledge_document, validate_and_store
+from utils.auth import get_current_user
+from utils.file_validation import FileValidationError
+
 
 router = APIRouter(prefix="/api/knowledge", tags=["知识库"])
 
-# 上传文件存放目录
-UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
-
-ALLOWED_SUFFIXES = {".pdf", ".txt", ".md", ".markdown", ".docx", ".xlsx", ".xls", ".pptx"} | IMAGE_SUFFIXES
-
 
 @router.post("/upload")
-def upload_doc(
+async def upload_doc(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """上传文档 → 解析 → 切块 → 向量化 → 存入知识库"""
-    # 1. 校验文件类型
-    suffix = Path(file.filename).suffix.lower()
-    if suffix not in ALLOWED_SUFFIXES:
-        raise HTTPException(400, f"不支持的文件类型: {suffix}，仅支持 PDF/TXT/MD/DOCX/XLSX/PPTX/图片")
-
-    # 2. 保存文件到本地
-    file_path = UPLOAD_DIR / file.filename
-    with open(file_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-
-    # 3. 解析文档内容
+    """Validate an upload, create a pending doc, and process it in the background."""
     try:
-        content = load_document(file_path)
-    except Exception as e:
-        raise HTTPException(500, f"文档解析失败: {str(e)}")
+        stored = await validate_and_store(file, current_user.id)
+    except FileValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if not content.strip():
-        if suffix in IMAGE_SUFFIXES:
-            content = "(图片中未检测到文字)"
-        else:
-            raise HTTPException(400, "文件内容为空")
+    try:
+        doc = doc_crud.create_doc(
+            db,
+            user_id=current_user.id,
+            title=stored["filename"],
+            content="",
+            file_type=stored["extension"].lstrip("."),
+            source=stored["storage_path"],
+            status="processing",
+        )
+    except Exception:
+        Path(stored["storage_path"]).unlink(missing_ok=True)
+        raise
 
-    # 4. 切块
-    chunks = split_text(content)
+    background_tasks.add_task(process_knowledge_document, doc.id)
 
-    # 5. 向量化
-    vectors = embed_texts(chunks)
-
-    # 6. 存入共享 FAISS 索引
-    docs_meta = [
-        {"id": i, "content": chunk, "source": file.filename}
-        for i, chunk in enumerate(chunks)
-    ]
-    add_vectors(vectors, docs_meta)
-
-    # 7. 存入 MySQL（关联用户）
-    doc_record = doc_crud.create_doc(
-        db,
-        user_id=current_user.id,
-        title=file.filename,
-        content=content[:500],
-        file_type=suffix.replace(".", ""),
-        source=str(file_path),
-        status="completed",
-    )
-
-    # ★ 记录操作日志
     OperationLogger.log_knowledge_event(
         db,
         action=Actions.KNOWLEDGE_UPLOAD,
         user_id=current_user.id,
-        doc_title=file.filename,
-        detail={
-            "chunks": len(chunks),
-            "file_type": suffix,
-            "total_vectors": count(),
-        },
+        doc_title=stored["filename"],
+        detail={"file_type": stored["extension"], "file_size": stored["size"], "status": "processing"},
         success=True,
     )
 
     return {
-        "message": "上传成功",
-        "id": doc_record.id,
-        "title": doc_record.title,
-        "chunks": len(chunks),
+        "message": "上传成功，正在解析和建立索引",
+        "id": doc.id,
+        "title": doc.title,
+        "file_type": doc.file_type,
+        "status": doc.status,
         "total_vectors": count(),
     }
 
@@ -108,10 +73,8 @@ def list_docs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取全部文档列表（分页）"""
-    total, items = doc_crud.list_docs(db, page, page_size)
-
-    # ★ 记录查看操作
+    """List only the current user's knowledge documents."""
+    total, items = doc_crud.list_docs(db, page, page_size, user_id=current_user.id)
     OperationLogger.log_knowledge_event(
         db,
         action=Actions.KNOWLEDGE_LIST,
@@ -120,7 +83,6 @@ def list_docs(
         detail={"page": page, "page_size": page_size, "total": total},
         success=True,
     )
-
     return {
         "total": total,
         "page": page,
@@ -131,6 +93,7 @@ def list_docs(
                 "title": d.title,
                 "file_type": d.file_type,
                 "status": d.status,
+                "error_message": d.error_message,
                 "created_at": str(d.created_at) if d.created_at else None,
                 "uploader": d.owner.username if d.owner else None,
             }
@@ -139,26 +102,44 @@ def list_docs(
     }
 
 
-@router.delete("/docs/{doc_id}")
-def delete_doc(
+@router.get("/docs/{doc_id}")
+def get_doc_status(
     doc_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """删除自己的文档（MySQL + FAISS 向量同步删除）"""
+    """Poll parse/embedding state for one owned document."""
     doc = doc_crud.get_doc(db, doc_id, current_user.id)
     if not doc:
-        raise HTTPException(404, "文档不存在")
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return {
+        "id": doc.id,
+        "title": doc.title,
+        "file_type": doc.file_type,
+        "status": doc.status,
+        "error_message": doc.error_message,
+        "created_at": str(doc.created_at) if doc.created_at else None,
+    }
+
+
+@router.delete("/docs/{doc_id}")
+async def delete_doc(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete an owned document, its vectors, and its permanent file."""
+    doc = doc_crud.get_doc(db, doc_id, current_user.id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="文档不存在")
 
     doc_title = doc.title
-
-    # 1. 先从共享 FAISS 移除该文档的所有向量块
-    removed = remove_by_source(doc.title)
-
-    # 2. 再删 MySQL 记录
+    storage_path = Path(doc.source) if doc.source else None
+    removed = await asyncio.to_thread(remove_by_file_id, doc.id, doc_title)
     doc_crud.delete_doc(db, doc_id, current_user.id)
+    if storage_path:
+        storage_path.unlink(missing_ok=True)
 
-    # ★ 记录操作日志
     OperationLogger.log_knowledge_event(
         db,
         action=Actions.KNOWLEDGE_DELETE,
@@ -167,7 +148,6 @@ def delete_doc(
         detail={"removed_vectors": removed, "total_vectors": count()},
         success=True,
     )
-
     return {
         "message": "删除成功",
         "removed_vectors": removed,

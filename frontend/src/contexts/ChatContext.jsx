@@ -91,13 +91,19 @@ export function ChatProvider({ children }) {
     });
   }, [activeId, loadMessages]);
 
-  const send = useCallback((question) => {
-    if (!activeId) { newChat().then((newId) => { if (newId) doSend(question, newId); }); return; }
-    doSend(question, activeId);
+  const send = useCallback((question, attachments = []) => {
+    if (!activeId) { newChat().then((newId) => { if (newId) doSend(question, newId, attachments); }); return; }
+    doSend(question, activeId, attachments);
   }, [activeId, newChat]);
 
-  const doSend = useCallback((question, convId) => {
-    const userMsg = { id: genId(), role: "user", content: question, time: new Date().toLocaleTimeString() };
+  const doSend = useCallback((question, convId, attachments = []) => {
+    const userMsg = {
+      id: genId(),
+      role: "user",
+      content: question,
+      attachments,
+      time: new Date().toLocaleTimeString(),
+    };
     const aiMsgId = genId() + 1;
     const aiMsg = { id: aiMsgId, role: "assistant", content: "", time: new Date().toLocaleTimeString() };
 
@@ -199,7 +205,7 @@ export function ChatProvider({ children }) {
     abortRef.current = { ws, aiMsgId, finalizeStreaming };
 
     // 发送消息
-    sendChatMessage(ws, question);
+    sendChatMessage(ws, question, attachments.map((item) => item.id));
   }, [refreshConversations]);
 
   const cancelStream = useCallback(() => {

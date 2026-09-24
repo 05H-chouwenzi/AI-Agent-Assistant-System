@@ -4,10 +4,19 @@
 通过 .env 中的 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL 配置。
 """
 from langchain_openai import ChatOpenAI
-from config.settings import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+from config.settings import (
+    LLM_API_KEY,
+    LLM_BASE_URL,
+    LLM_MODEL,
+    VISION_LLM_API_KEY,
+    VISION_LLM_BASE_URL,
+    VISION_LLM_MODEL,
+)
 
 _llm_instance: ChatOpenAI | None = None
 _llm_streaming_instance: ChatOpenAI | None = None
+_vision_llm_instance: ChatOpenAI | None = None
+_vision_llm_streaming_instance: ChatOpenAI | None = None
 
 
 def get_llm(*, streaming: bool = True) -> ChatOpenAI:
@@ -41,3 +50,36 @@ def get_llm(*, streaming: bool = True) -> ChatOpenAI:
             temperature=0.3,
         )
     return _llm_instance
+
+
+def get_vision_llm(*, streaming: bool = True) -> ChatOpenAI:
+    """Get the separate Vision-capable LLM used only when a message has images.
+
+    DashScope's OpenAI-compatible endpoint is the default because the project
+    already stores DASHSCOPE_API_KEY / DASHSCOPE_BASE_URL.
+    """
+    global _vision_llm_instance, _vision_llm_streaming_instance
+
+    if not VISION_LLM_API_KEY:
+        raise RuntimeError("当前未配置 Vision-capable model，请设置 VISION_LLM_API_KEY / VISION_LLM_MODEL")
+
+    if streaming:
+        if _vision_llm_streaming_instance is None:
+            _vision_llm_streaming_instance = ChatOpenAI(
+                model=VISION_LLM_MODEL,
+                api_key=VISION_LLM_API_KEY,
+                base_url=VISION_LLM_BASE_URL,
+                streaming=True,
+                temperature=0.3,
+            )
+        return _vision_llm_streaming_instance
+
+    if _vision_llm_instance is None:
+        _vision_llm_instance = ChatOpenAI(
+            model=VISION_LLM_MODEL,
+            api_key=VISION_LLM_API_KEY,
+            base_url=VISION_LLM_BASE_URL,
+            streaming=False,
+            temperature=0.3,
+        )
+    return _vision_llm_instance

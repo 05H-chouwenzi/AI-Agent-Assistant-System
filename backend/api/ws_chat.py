@@ -18,6 +18,13 @@ from agent.graph.router import AGENT_LABELS
 from agent.nodes.fast_router import FastRouter
 from tools.tool_manager import get_tool_manager, register_default_tools
 from tools.formatter import format_tool_result
+from services.chat_attachments import (
+    AttachmentError,
+    build_chat_message,
+    cleanup_attachments,
+    load_attachments,
+)
+from utils.request_context import set_current_user_id, reset_current_user_id
 
 logger = logging.getLogger(__name__)
 _metrics_logger = logging.getLogger("uvicorn.error")
@@ -53,6 +60,7 @@ async def chat_websocket(
         await websocket.close(code=4001, reason="Unauthorized")
         return
     await websocket.accept()
+    context_token = set_current_user_id(user.id)
 
     async with AsyncSessionLocal() as db:
         if conversation_id == 0:
@@ -80,12 +88,19 @@ async def chat_websocket(
             t0 = time.perf_counter_ns()
             data = json.loads(raw)
             user_message = data.get("message", "").strip()
-            if not user_message:
+            attachment_ids = data.get("attachment_ids") or []
+            try:
+                attachments = load_attachments(attachment_ids, user.id)
+            except AttachmentError as exc:
+                await websocket.send_json({"type": "error", "content": str(exc)})
+                continue
+            display_question = user_message or "（发送了聊天附件）"
+            if not user_message and not attachments:
                 continue
 
             # ========== FastRouter 旁路：零 LLM 调用处理简单请求（与 /send、/stream 一致）==========
             _fast_router = FastRouter()
-            _match = _fast_router.route(user_message)
+            _match = _fast_router.route(user_message, has_attachments=bool(attachments))
             fast_router_end = time.perf_counter_ns()
             if _match and _match.is_final:
                 register_default_tools()
@@ -93,12 +108,12 @@ async def chat_websocket(
                 _result = await _manager.aexecute(_match.tool_name, **_match.tool_args)
                 _fast_response = format_tool_result(_result, _match.tool_name)
                 async with AsyncSessionLocal() as db:
-                    await create_message(db, conversation_id, "user", user_message)
+                    await create_message(db, conversation_id, "user", display_question)
                     await create_message(db, conversation_id, "assistant", _fast_response)
                     conv = await get_conversation(db, conversation_id, user.id)
                     if conv and (not conv.title or conv.title == _DEFAULT_TITLE):
-                        await update_conversation_title(db, conversation_id, user_message[:30], user.id)
-                        await websocket.send_json({"type": "title_update", "title": user_message[:30]})
+                        await update_conversation_title(db, conversation_id, display_question[:30], user.id)
+                        await websocket.send_json({"type": "title_update", "title": display_question[:30]})
                 await websocket.send_json({"type": "token", "content": _fast_response})
                 await websocket.send_json({"type": "done", "content": _fast_response, "conversation_id": conversation_id})
                 continue
@@ -115,19 +130,21 @@ async def chat_websocket(
                     history_messages.append(AIMessage(content=m.content))
 
             async with AsyncSessionLocal() as db:
-                await create_message(db, conversation_id, "user", user_message)
+                await create_message(db, conversation_id, "user", display_question)
                 t2 = time.perf_counter_ns()
                 title_db_start = t2
                 conv = await get_conversation(db, conversation_id, user.id)
                 if conv and (not conv.title or conv.title == _DEFAULT_TITLE):
-                    await update_conversation_title(db, conversation_id, user_message[:30], user.id)
+                    await update_conversation_title(db, conversation_id, display_question[:30], user.id)
                     title_db_end = time.perf_counter_ns()
-                    await websocket.send_json({"type": "title_update", "title": user_message[:30]})
+                    await websocket.send_json({"type": "title_update", "title": display_question[:30]})
                 else:
                     title_db_end = title_db_start
 
+            user_langchain_message = await build_chat_message(user_message, attachments)
             state = AgentState(
-                messages=[*history_messages, HumanMessage(content=user_message)],
+                messages=[*history_messages, user_langchain_message],
+                attachments=attachments,
                 tenant_id=user.tenant_id,
                 user_id=user.id,
                 next_agent="",
@@ -349,6 +366,7 @@ async def chat_websocket(
                 "route_trail": route_trail,
             })
             _log_ttft_debug("agent_graph")
+            cleanup_attachments(attachments)
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: conv={conversation_id}, user={user.id}")
@@ -361,6 +379,7 @@ async def chat_websocket(
         except Exception:
             pass
     finally:
+        reset_current_user_id(context_token)
         if heartbeat_task:
             heartbeat_task.cancel()
             try:

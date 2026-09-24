@@ -36,8 +36,11 @@ export function connectChatWs(conversationId, token, onMessage, onError) {
  * @param {WebSocket} ws
  * @param {string} message
  */
-export function sendChatMessage(ws, message) {
-  const payload = JSON.stringify({ message });
+export function sendChatMessage(ws, message, attachmentIds = []) {
+  const payload = JSON.stringify({
+    message,
+    ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
+  });
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(payload);
   } else if (ws.readyState === WebSocket.CONNECTING) {

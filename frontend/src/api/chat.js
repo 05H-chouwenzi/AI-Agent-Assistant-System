@@ -21,6 +21,22 @@ export async function sendMessage(question) {
   return res.data;
 }
 
+/** 上传聊天临时附件（不会写入知识库） */
+export async function uploadChatAttachment(file) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await api.post("/api/chat/attachments", form, {
+    timeout: 60000,
+  });
+  return res.data;
+}
+
+/** 删除尚未发送的聊天临时附件 */
+export async function deleteChatAttachment(id) {
+  const res = await api.delete(`/api/chat/attachments/${id}`);
+  return res.data;
+}
+
 /** 获取会话列表 */
 export async function getConversations() {
   const res = await api.get("/api/conversations/");

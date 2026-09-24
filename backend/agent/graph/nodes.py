@@ -21,7 +21,7 @@ from agent.graph.router import (
     GENERAL_KEYWORDS,
 )
 from agent.graph.state import AgentState
-from agent.llm import get_llm
+from agent.llm import get_llm, get_vision_llm
 from tools.langchain_tools import get_research_tools, get_data_tools, get_general_tools
 from logs.logger import logger
 
@@ -29,7 +29,6 @@ from logs.logger import logger
 # 工具列表在启动时注册（register_default_tools），之后不再变化。
 # 缓存 Agent 避免每次请求重复编译 ReAct Prompt。
 _agent_cache: dict[str, object] = {}
-_agent_initialized = False
 _WORKER_INPUT_MESSAGE_LIMIT = 8
 
 SYNTHESIZE_PROMPT = """你是企业 AI Agent 平台的 Synthesize Node。
@@ -44,12 +43,7 @@ SYNTHESIZE_PROMPT = """你是企业 AI Agent 平台的 Synthesize Node。
 
 
 def _build_agents():
-    """初始化并缓存所有 Agent 实例（启动时或首次调用时执行一次）"""
-    global _agent_initialized, _agent_cache
-
-    if _agent_initialized:
-        return
-
+    """初始化并缓存普通 Agent 实例（启动时或首次调用时执行一次）"""
     from langgraph.prebuilt import create_react_agent
 
     llm = get_llm(streaming=True)  # 流式 LLM → SSE 逐 token 推送
@@ -57,15 +51,24 @@ def _build_agents():
     _agent_cache["research"] = create_react_agent(llm, get_research_tools())
     _agent_cache["data"] = create_react_agent(llm, get_data_tools())
     _agent_cache["general"] = create_react_agent(llm, get_general_tools())
-    _agent_initialized = True
-
     logger.info(f"Agent 缓存就绪: research/data/general")
 
 
-def _get_agent(agent_key: str) -> object:
-    """获取缓存的 Agent 实例"""
-    _build_agents()
-    return _agent_cache[agent_key]
+def _get_agent(agent_key: str, *, vision: bool = False) -> object:
+    """获取缓存 Agent；含图片的请求使用独立的 Vision-capable LLM。"""
+    cache_key = f"vision:{agent_key}" if vision else agent_key
+    if cache_key not in _agent_cache:
+        from langgraph.prebuilt import create_react_agent
+
+        llm = get_vision_llm(streaming=True) if vision else get_llm(streaming=True)
+        tools = {
+            "research": get_research_tools,
+            "data": get_data_tools,
+            "general": get_general_tools,
+        }[agent_key]()
+        _agent_cache[cache_key] = create_react_agent(llm, tools)
+        logger.info(f"Agent 缓存就绪: {cache_key}")
+    return _agent_cache[cache_key]
 
 
 def warm_up_agents() -> None:
@@ -76,13 +79,21 @@ def warm_up_agents() -> None:
 def _latest_user_text(state: AgentState) -> str:
     for msg in reversed(state["messages"]):
         if isinstance(msg, HumanMessage):
-            return msg.content if isinstance(msg.content, str) else str(msg.content)
+            return _message_text(msg)
     return ""
 
 
 def _message_text(message: object) -> str:
     content = getattr(message, "content", "")
-    return content if isinstance(content, str) else str(content)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            item.get("text", "")
+            for item in content
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+        )
+    return str(content)
 
 
 def _extract_worker_results(state: AgentState) -> list[tuple[str, str]]:
@@ -121,6 +132,22 @@ async def supervisor_node(state: AgentState) -> dict:
     sorted_scores = sorted(scores.values(), reverse=True)
     best_score = sorted_scores[0] if sorted_scores else 0
     second_score = sorted_scores[1] if len(sorted_scores) > 1 else 0
+
+    # AttachmentContext is evidence for routing, not a separate Worker. Images
+    # use the Vision-capable LLM inside the selected Worker; tables favor Data;
+    # documents favor Research; text/image-only descriptions stay in General.
+    attachments = state.get("attachments") or []
+    if attachments:
+        kinds = {item.get("kind") for item in attachments}
+        if "table" in kinds:
+            scores["data"] += 3
+        if "document" in kinds:
+            scores["research"] += 3
+        if "image" in kinds:
+            scores["general"] += 2
+        sorted_scores = sorted(scores.values(), reverse=True)
+        best_score = sorted_scores[0]
+        second_score = sorted_scores[1] if len(sorted_scores) > 1 else 0
 
     # 得分明确 → 走启发式；不明确 → 默认 general（不调 LLM）
     if best_score >= 2 and (best_score - second_score) >= 2:
@@ -172,7 +199,9 @@ async def supervisor_node(state: AgentState) -> dict:
 
 async def _run_worker(state: AgentState, agent_key: RouteTarget) -> dict:
     """执行 Worker（使用缓存的 create_react_agent，避免每次编译）"""
-    agent = _get_agent(agent_key)
+    attachments = state.get("attachments") or []
+    has_image = any(item.get("kind") == "image" for item in attachments)
+    agent = _get_agent(agent_key, vision=has_image)
     worker_messages = list(state["messages"][-_WORKER_INPUT_MESSAGE_LIMIT:])
     if worker_messages and not isinstance(worker_messages[0], HumanMessage):
         worker_messages = worker_messages[1:]
@@ -214,7 +243,8 @@ async def synthesize_node(state: AgentState) -> dict:
         result_sections.append(f"{label}:\n{content}")
 
     user_text = _latest_user_text(state)
-    llm = get_llm(streaming=True)
+    has_image = any(item.get("kind") == "image" for item in state.get("attachments") or [])
+    llm = get_vision_llm(streaming=True) if has_image else get_llm(streaming=True)
     response = await llm.ainvoke(
         [
             SystemMessage(content=SYNTHESIZE_PROMPT),

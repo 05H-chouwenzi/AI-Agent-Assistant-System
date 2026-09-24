@@ -42,3 +42,8 @@ backend/rag/data/vector_index_shared/*.faiss
 
 # Sensitive data
 用户账号密码.xlsx
+
+# Local test artifacts and scratch files
+backend/backend/
+unused
+backend/unused

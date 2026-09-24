@@ -15,6 +15,7 @@ from models.user import User
 from utils.auth import get_current_user
 from logs.operation_logger import OperationLogger, Actions
 from utils.client_ip import get_client_ip
+from utils.request_context import set_current_user_id, reset_current_user_id
 
 router = APIRouter(prefix="/api/tools", tags=["工具中心"])
 
@@ -101,7 +102,11 @@ def search_knowledge(
         raise HTTPException(status_code=500, detail="知识库检索工具未注册")
 
     start = time.time()
-    result: ToolResult = tool.execute(query=req.query.strip(), top_k=req.top_k or 5)
+    context_token = set_current_user_id(current_user.id)
+    try:
+        result: ToolResult = tool.execute(query=req.query.strip(), top_k=req.top_k or 5)
+    finally:
+        reset_current_user_id(context_token)
     elapsed = (time.time() - start) * 1000
 
     if result.success:

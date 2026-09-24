@@ -19,6 +19,8 @@ from rag.vector_store.faiss_store import (  # type: ignore
     search as _faiss_search,
     count as _faiss_count,
     remove_by_source as _faiss_remove_by_source,
+    remove_by_file_id as _faiss_remove_by_file_id,
+    backfill_legacy_metadata as _faiss_backfill_legacy_metadata,
     clear as _faiss_clear,
 )
 
@@ -33,12 +35,13 @@ def _resolve_implementation():
                 search as _pg_search,
                 count as _pg_count,
                 remove_by_source as _pg_remove,
+                remove_by_file_id as _pg_remove_by_file_id,
                 clear as _pg_clear,
                 is_available,
             )
             if is_available():
                 logger.info("向量存储: 使用 pgvector 后端")
-                return _pg_add, _pg_search, _pg_count, _pg_remove, _pg_clear
+                return _pg_add, _pg_search, _pg_count, _pg_remove, _pg_remove_by_file_id, _pg_clear
             else:
                 logger.warning("pgvector 不可用，回退到 FAISS")
         except Exception as e:
@@ -47,10 +50,11 @@ def _resolve_implementation():
         logger.debug(f"向量存储: 使用 FAISS 后端 (VECTOR_STORE_PROVIDER={VECTOR_STORE_PROVIDER})")
 
     return (_faiss_add_vectors, _faiss_search,
-            _faiss_count, _faiss_remove_by_source, _faiss_clear)
+            _faiss_count, _faiss_remove_by_source,
+            _faiss_remove_by_file_id, _faiss_clear)
 
 
-_add_vectors, _search, _count, _remove_by_source, _clear = _resolve_implementation()
+_add_vectors, _search, _count, _remove_by_source, _remove_by_file_id, _clear = _resolve_implementation()
 
 
 # ====== 统一导出，接口与 FAISS 版完全一致 ======
@@ -59,8 +63,8 @@ def add_vectors(vectors: list[list[float]], documents: list[dict]):
     return _add_vectors(vectors, documents)
 
 
-def search(query_vec: list[float], top_k: int = 5) -> list[dict]:
-    return _search(query_vec, top_k=top_k)
+def search(query_vec: list[float], top_k: int = 5, user_id: int | None = None) -> list[dict]:
+    return _search(query_vec, top_k=top_k, user_id=user_id)
 
 
 def count() -> int:
@@ -69,6 +73,16 @@ def count() -> int:
 
 def remove_by_source(source: str) -> int:
     return _remove_by_source(source)
+
+
+def remove_by_file_id(file_id: int, source: str | None = None) -> int:
+    return _remove_by_file_id(file_id, source)
+
+
+def backfill_legacy_metadata() -> int:
+    if _add_vectors is _faiss_add_vectors:
+        return _faiss_backfill_legacy_metadata()
+    return 0
 
 
 def clear():
